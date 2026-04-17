@@ -172,8 +172,13 @@ Examples:
     if args.verbose:
         print(f"Processing {len(commits)} commit(s)...\n")
 
+    # Track results
+    successful = 0
+    failed = 0
+    skipped = 0
+
     # Process each commit
-    for commit_ref in commits:
+    for i, commit_ref in enumerate(commits, 1):
         try:
             # Extract commit
             commit = git.get_commit(commit_ref, upstream_branch=args.upstream_branch)
@@ -182,7 +187,12 @@ Examples:
             if len(commit.diff.split('\n')) < 5 or "Merge:" in commit.message:
                 if args.verbose:
                     print(f"Skipping merge commit {commit.sha[:12]}")
+                skipped += 1
                 continue
+
+            # Show progress for multiple commits
+            if len(commits) > 1 and args.verbose:
+                print(f"[{i}/{len(commits)}] Processing commit {commit.sha[:12]}...")
 
             # Execute review
             result = workflow.execute_review(commit)
@@ -212,19 +222,67 @@ Examples:
             metadata_gen.save_json(metadata, metadata_path)
 
             # Print summary
-            print(f"Commit {sha_short}: {commit.subject}")
+            print(f"✓ Commit {sha_short}: {commit.subject}")
             print(f"  Issues found: {len(result.findings)}")
             print(f"  Severity: {metadata['issue-severity-score']}")
             print(f"  Report: {report_path}")
             print(f"  Metadata: {metadata_path}")
             print()
 
-        except Exception as e:
-            print(f"Error processing commit {commit_ref}: {e}", file=sys.stderr)
-            if args.verbose:
+            successful += 1
+
+        except RuntimeError as e:
+            # RuntimeError includes our timeout and connection errors
+            error_msg = str(e)
+            print(f"✗ Error processing commit {commit_ref}:", file=sys.stderr)
+            print(f"  {error_msg}", file=sys.stderr)
+
+            # For timeout errors, suggest solutions
+            if "timed out" in error_msg.lower():
+                print(f"  Suggestion: Increase LLM_TIMEOUT in config.py (current: {config.LLM_TIMEOUT}s)", file=sys.stderr)
+            elif "connect" in error_msg.lower():
+                print(f"  Suggestion: Ensure LLM server is running at {args.host}:{args.port}", file=sys.stderr)
+
+            print(file=sys.stderr)
+
+            if args.debug:
                 import traceback
                 traceback.print_exc()
+
+            failed += 1
+
+            # Continue with next commit
+            if len(commits) > 1:
+                print(f"Continuing with next commit...\n", file=sys.stderr)
             continue
+
+        except Exception as e:
+            print(f"✗ Unexpected error processing commit {commit_ref}: {e}", file=sys.stderr)
+            if args.debug:
+                import traceback
+                traceback.print_exc()
+
+            failed += 1
+
+            # Continue with next commit
+            if len(commits) > 1:
+                print(f"Continuing with next commit...\n", file=sys.stderr)
+            continue
+
+    # Print final summary for multiple commits
+    if len(commits) > 1:
+        print("=" * 70)
+        print(f"Summary: {len(commits)} total commits")
+        print(f"  ✓ {successful} successful")
+        if failed > 0:
+            print(f"  ✗ {failed} failed")
+        if skipped > 0:
+            print(f"  ⊘ {skipped} skipped")
+        print("=" * 70)
+
+    # Return error code if all commits failed
+    if successful == 0 and (failed > 0 or skipped == len(commits)):
+        return 1
 
     return 0
 

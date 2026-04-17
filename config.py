@@ -27,5 +27,9 @@ MAX_RETRIES = 3
 RETRY_DELAY = 1.0  # seconds
 RETRY_BACKOFF = 2.0  # exponential backoff multiplier
 
+# Timeout configuration
+LLM_TIMEOUT = 300  # seconds (5 minutes) - timeout for LLM API calls
+CONNECT_TIMEOUT = 10  # seconds - timeout for initial connection
+
 # Debug options
 DEBUG_DUMP_DIR = "debug_dumps"  # Directory for prompt/response dumps

@@ -4,6 +4,7 @@ import time
 import os
 from typing import List, Dict, Optional
 from openai import OpenAI
+from openai import APITimeoutError, APIConnectionError
 
 import config
 
@@ -53,10 +54,14 @@ class OpenAIClient:
         try:
             self.client = OpenAI(
                 base_url=self.base_url,
-                api_key=self.api_key
+                api_key=self.api_key,
+                timeout=config.LLM_TIMEOUT
             )
         except Exception as e:
             raise RuntimeError(f"Failed to initialize OpenAI client: {e}")
+
+        if self.debug:
+            print(f"[DEBUG] OpenAI client initialized with timeout: {config.LLM_TIMEOUT}s")
 
     def analyze_code(
         self,
@@ -152,18 +157,65 @@ class OpenAIClient:
 
                 return response_text
 
-            except Exception as e:
+            except APITimeoutError as e:
                 last_error = e
+                error_msg = f"LLM request timed out after {config.LLM_TIMEOUT}s"
+                if self.verbose or self.debug:
+                    print(f"[TIMEOUT] {error_msg}")
+
                 if attempt < config.MAX_RETRIES - 1:
                     delay = config.RETRY_DELAY * (config.RETRY_BACKOFF ** attempt)
                     if self.verbose:
-                        print(f"Error: {e}. Retrying in {delay:.1f}s...")
+                        print(f"Retrying in {delay:.1f}s... (attempt {attempt + 2}/{config.MAX_RETRIES})")
                     time.sleep(delay)
                 else:
                     if self.verbose:
-                        print(f"All retry attempts failed")
+                        print(f"All retry attempts exhausted")
 
-        raise RuntimeError(f"LLM API call failed after {config.MAX_RETRIES} attempts: {last_error}")
+            except APIConnectionError as e:
+                last_error = e
+                error_msg = f"Failed to connect to LLM server at {self.base_url}"
+                if self.verbose or self.debug:
+                    print(f"[CONNECTION ERROR] {error_msg}")
+
+                if attempt < config.MAX_RETRIES - 1:
+                    delay = config.RETRY_DELAY * (config.RETRY_BACKOFF ** attempt)
+                    if self.verbose:
+                        print(f"Retrying in {delay:.1f}s... (attempt {attempt + 2}/{config.MAX_RETRIES})")
+                    time.sleep(delay)
+                else:
+                    if self.verbose:
+                        print(f"All retry attempts exhausted")
+
+            except Exception as e:
+                last_error = e
+                error_type = type(e).__name__
+                if self.verbose or self.debug:
+                    print(f"[ERROR] {error_type}: {e}")
+
+                if attempt < config.MAX_RETRIES - 1:
+                    delay = config.RETRY_DELAY * (config.RETRY_BACKOFF ** attempt)
+                    if self.verbose:
+                        print(f"Retrying in {delay:.1f}s... (attempt {attempt + 2}/{config.MAX_RETRIES})")
+                    time.sleep(delay)
+                else:
+                    if self.verbose:
+                        print(f"All retry attempts exhausted")
+
+        # Provide specific error message based on error type
+        if isinstance(last_error, APITimeoutError):
+            raise RuntimeError(
+                f"LLM request timed out after {config.MAX_RETRIES} attempts. "
+                f"Each request times out after {config.LLM_TIMEOUT}s. "
+                f"Try increasing LLM_TIMEOUT in config.py or using a faster model."
+            )
+        elif isinstance(last_error, APIConnectionError):
+            raise RuntimeError(
+                f"Failed to connect to LLM server at {self.base_url} after {config.MAX_RETRIES} attempts. "
+                f"Ensure the server is running and accessible."
+            )
+        else:
+            raise RuntimeError(f"LLM API call failed after {config.MAX_RETRIES} attempts: {last_error}")
 
     def _dump_prompt(
         self,

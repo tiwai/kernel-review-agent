@@ -273,7 +273,17 @@ DEFAULT_TEMPERATURE = 0.1
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0
 RETRY_BACKOFF = 2.0
+
+# Timeout configuration
+LLM_TIMEOUT = 300  # seconds (5 minutes) - timeout for LLM API calls
+CONNECT_TIMEOUT = 10  # seconds - timeout for initial connection
 ```
+
+**Timeout Configuration:**
+- `LLM_TIMEOUT`: Maximum time to wait for LLM response (default: 300s / 5 minutes)
+- `CONNECT_TIMEOUT`: Maximum time to wait for initial connection (default: 10s)
+- Increase `LLM_TIMEOUT` if you see timeout errors with large diffs or complex commits
+- The agent will retry up to `MAX_RETRIES` times on timeout before giving up
 
 ## Limitations
 
@@ -298,6 +308,15 @@ The LLM may not be returning valid JSON. Try:
 - Using a more capable model
 - Increasing `DEFAULT_MAX_TOKENS` in config.py
 - Enabling `--verbose` to see raw responses
+
+### "LLM request timed out"
+The LLM took too long to respond. Solutions:
+- Increase `LLM_TIMEOUT` in config.py (default: 300 seconds)
+- Use a faster model or reduce `DEFAULT_MAX_TOKENS`
+- Check if the LLM server is overloaded
+- Enable `--debug` to see which task is timing out
+
+**Note:** When processing multiple commits, the agent will skip timed-out commits and continue with the rest.
 
 ## License
 
