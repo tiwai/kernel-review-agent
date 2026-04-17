@@ -115,6 +115,7 @@ Examples:
     # Show debug info if enabled
     if args.debug:
         print(f"[DEBUG] Configuration:")
+        print(f"[DEBUG]   Install directory: {config.INSTALL_DIR}")
         print(f"[DEBUG]   LLM: {args.host}:{args.port}")
         print(f"[DEBUG]   Model: {args.model}")
         print(f"[DEBUG]   Verbose: {args.verbose}")
@@ -145,6 +146,10 @@ Examples:
         return 1
 
     prompts = PromptLoader()
+    if args.debug:
+        print(f"[DEBUG]   Prompts directory: {prompts.prompts_dir}")
+        print()
+
     matcher = SubsystemMatcher()
     workflow = ReviewWorkflow(
         llm,

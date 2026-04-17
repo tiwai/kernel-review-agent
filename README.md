@@ -14,12 +14,43 @@ AI-powered agent for automated review of Linux kernel git commits. This agent an
 ## Installation
 
 ```bash
+# Clone or copy the repository
+git clone <repository-url> /path/to/kernel-review-agent
+cd /path/to/kernel-review-agent
+
 # Install dependencies
 pip install -r requirements.txt
 
 # Verify installation
 python kernel_review_agent.py --help
 ```
+
+### Running from Anywhere
+
+The agent can be run from any directory - it automatically finds its prompts and configuration files relative to the installation directory:
+
+```bash
+# Run from any directory
+cd /path/to/linux-kernel
+python /path/to/kernel-review-agent/kernel_review_agent.py HEAD
+
+# Or add to PATH
+export PATH="/path/to/kernel-review-agent:$PATH"
+kernel_review_agent.py HEAD
+```
+
+### Environment Variables
+
+**`KREVIEW_HOME`** (optional): Override the installation directory location
+```bash
+export KREVIEW_HOME=/opt/kernel-review-agent
+python kernel_review_agent.py HEAD
+```
+
+This is useful if:
+- The agent is installed in a non-standard location
+- You want to use a custom set of review prompts
+- You're running from a symlink or wrapper script
 
 ## Prerequisites
 

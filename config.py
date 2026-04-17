@@ -1,5 +1,11 @@
 """Configuration defaults for kernel review agent."""
 
+import os
+
+# Installation directory (where this config.py is located)
+# Can be overridden with KREVIEW_HOME environment variable
+INSTALL_DIR = os.environ.get('KREVIEW_HOME', os.path.dirname(os.path.abspath(__file__)))
+
 # LLM API defaults
 DEFAULT_HOST = "localhost"
 DEFAULT_PORT = 8080

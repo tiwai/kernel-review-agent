@@ -7,14 +7,23 @@ from typing import List
 class PromptLoader:
     """Load and manage review protocol prompts."""
 
-    def __init__(self, prompts_dir: str = "prompts"):
+    def __init__(self, prompts_dir: str = None):
         """
         Initialize prompt loader.
 
         Args:
-            prompts_dir: Directory containing prompt markdown files
+            prompts_dir: Directory containing prompt markdown files.
+                        If None, uses prompts/ relative to installation directory.
         """
-        self.prompts_dir = prompts_dir
+        if prompts_dir is None:
+            # Get the directory where this module is located
+            module_dir = os.path.dirname(os.path.abspath(__file__))
+            # Go up one level to the installation directory
+            install_dir = os.path.dirname(module_dir)
+            # Prompts are in install_dir/prompts
+            prompts_dir = os.path.join(install_dir, "prompts")
+
+        self.prompts_dir = os.path.abspath(prompts_dir)
 
     def load_file(self, filename: str) -> str:
         """Load a prompt file."""
