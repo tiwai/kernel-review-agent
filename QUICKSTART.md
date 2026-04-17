@@ -167,3 +167,8 @@ The `<sha>` suffix (first 12 chars of commit SHA) prevents overwriting.
 - Review the kernel prompts in the `prompts/` directory
 - Examine example outputs to understand the format
 - Use `--debug` to see installation paths: `kernel_review_agent.py HEAD --debug`
+
+## License and Credits
+
+The kernel review prompts in `prompts/` are from the [review-prompts](https://github.com/masoncl/review-prompts) 
+project by Chris Mason, licensed under the MIT License. See the LICENSE file for details.

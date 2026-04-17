@@ -298,3 +298,11 @@ The agent is complete and ready for use. To start reviewing commits:
 1. Ensure you have an OpenAI-compatible LLM server running
 2. Navigate to a Linux kernel git tree
 3. Run: `kernel_review_agent.py HEAD --verbose` (if in PATH) or use the full path to the agent
+
+## License and Credits
+
+The kernel review prompts in the `prompts/` directory are from the 
+[review-prompts](https://github.com/masoncl/review-prompts) project by Chris Mason, 
+licensed under the MIT License.
+
+See the LICENSE file for the full MIT license text.

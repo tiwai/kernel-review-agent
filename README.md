@@ -196,7 +196,7 @@ kernel_review_agent.py          # CLI entry point
 ├── output/                     # Report generation
 │   ├── formatter.py            # LKML plain-text formatting
 │   └── metadata.py             # JSON metadata
-└── prompts/                    # Review protocols
+└── prompts/                    # Review protocols (from review-prompts by Chris Mason)
     ├── review-core.md          # Core review protocol
     ├── technical-patterns.md   # Bug patterns
     ├── false-positive-guide.md # Verification checks
@@ -335,8 +335,18 @@ The LLM took too long to respond. Solutions:
 
 ## License
 
-This tool is provided as-is for Linux kernel development and review purposes.
+The kernel review prompts in the `prompts/` directory are licensed under the MIT License.
+These prompts are maintained by Chris Mason in the review-prompts repository:
+https://github.com/masoncl/review-prompts
+
+See the LICENSE file for the full MIT license text.
+
+The agent code (Python modules) is provided as-is for Linux kernel development and review purposes.
 
 ## Credits
 
-Based on Linux kernel review protocols and best practices from the kernel community.
+**Review Prompts**: The systematic kernel review protocols and subsystem guides used by this
+agent are from the [review-prompts](https://github.com/masoncl/review-prompts) project
+by [Chris Mason](https://github.com/masoncl), licensed under the MIT License.
+
+**Agent Implementation**: Based on Linux kernel review best practices from the kernel community.
