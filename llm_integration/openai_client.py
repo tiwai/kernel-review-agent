@@ -2,6 +2,7 @@
 
 import time
 import os
+import sys
 from typing import List, Dict, Optional
 from openai import OpenAI
 from openai import APITimeoutError, APIConnectionError
@@ -145,11 +146,33 @@ class OpenAIClient:
                 )
 
                 response_text = response.choices[0].message.content
+                finish_reason = response.choices[0].finish_reason
 
                 if self.debug:
                     print(f"[DEBUG] Response length: {len(response_text)} chars")
+                    print(f"[DEBUG] Finish reason: {finish_reason}")
                     if hasattr(response, 'usage'):
                         print(f"[DEBUG] Token usage: {response.usage}")
+
+                # Check for truncated response
+                if finish_reason == "length":
+                    warning_msg = (
+                        f"[WARNING] Response was truncated due to token limit ({max_tokens} tokens). "
+                        f"This may cause JSON parsing errors. "
+                        f"Increase max_tokens in the calling code or in config.py."
+                    )
+                    print(f"\n{warning_msg}\n", file=sys.stderr)
+                    if self.debug:
+                        print(f"[DEBUG] Response ended with: ...{response_text[-100:]}")
+
+                # Check if response is close to limit (may be cut off)
+                if hasattr(response, 'usage'):
+                    completion_tokens = response.usage.completion_tokens
+                    usage_ratio = completion_tokens / max_tokens
+                    if usage_ratio > config.TRUNCATION_WARNING_THRESHOLD:
+                        if self.verbose or self.debug:
+                            print(f"[WARNING] Response used {completion_tokens}/{max_tokens} tokens "
+                                  f"({usage_ratio*100:.1f}%) - may be truncated")
 
                 # Dump response if enabled
                 if self.dump_prompts:

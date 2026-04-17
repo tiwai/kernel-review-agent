@@ -18,9 +18,17 @@ DEFAULT_OUTPUT_DIR = "."
 DEFAULT_UPSTREAM_BRANCH = None
 
 # LLM parameters
-DEFAULT_MAX_TOKENS = 8000
+DEFAULT_MAX_TOKENS = 16000  # Increased for complex kernel reviews
 DEFAULT_MODEL = "gpt-4"
 DEFAULT_TEMPERATURE = 0.1
+
+# Task-specific token limits
+CATEGORIZE_MAX_TOKENS = 8000    # Task 1: Categorize changes
+ANALYZE_MAX_TOKENS = 16000       # Task 2: Analyze for regressions
+VERIFY_MAX_TOKENS = 16000        # Task 3: Verify findings
+
+# Response truncation detection
+TRUNCATION_WARNING_THRESHOLD = 0.95  # Warn if response uses >95% of max_tokens
 
 # Retry configuration
 MAX_RETRIES = 3

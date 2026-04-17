@@ -2,12 +2,14 @@
 
 import json
 import re
+import sys
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 
 from git_integration import Commit
 from llm_integration import OpenAIClient
 from prompt_management import PromptLoader, SubsystemMatcher
+import config
 
 
 @dataclass
@@ -209,7 +211,7 @@ Return ONLY a JSON array of changes, no other text:
 [{{"id": "CHANGE-1", "type": "...", "description": "...", "location": "..."}}]
 """
 
-        response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=4000)
+        response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=config.CATEGORIZE_MAX_TOKENS)
 
         # Parse JSON response
         try:
@@ -218,9 +220,15 @@ Return ONLY a JSON array of changes, no other text:
             if json_match:
                 categories = json.loads(json_match.group(0))
                 return categories if isinstance(categories, list) else []
-        except json.JSONDecodeError:
-            if self.verbose:
-                print("Warning: Failed to parse categorization JSON")
+            else:
+                if self.verbose or self.debug:
+                    print("[WARNING] No JSON array found in categorization response", file=sys.stderr)
+                    print(f"[WARNING] Response preview: {response[:200]}...", file=sys.stderr)
+        except json.JSONDecodeError as e:
+            if self.verbose or self.debug:
+                print(f"[ERROR] Failed to parse categorization JSON: {e}", file=sys.stderr)
+                print(f"[ERROR] Response may be truncated. Last 100 chars: ...{response[-100:]}", file=sys.stderr)
+                print(f"[ERROR] Increase CATEGORIZE_MAX_TOKENS in config.py (current: {config.CATEGORIZE_MAX_TOKENS})", file=sys.stderr)
 
         return []
 
@@ -270,7 +278,7 @@ Return ONLY a JSON array of findings:
 If no issues found, return: []
 """
 
-        response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=8000)
+        response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=config.ANALYZE_MAX_TOKENS)
 
         # Parse JSON response
         try:
@@ -278,9 +286,17 @@ If no issues found, return: []
             if json_match:
                 findings = json.loads(json_match.group(0))
                 return findings if isinstance(findings, list) else []
-        except json.JSONDecodeError:
-            if self.verbose:
-                print("Warning: Failed to parse analysis JSON")
+            else:
+                if self.verbose or self.debug:
+                    print("[WARNING] No JSON array found in regression analysis response", file=sys.stderr)
+                    print(f"[WARNING] Response preview: {response[:200]}...", file=sys.stderr)
+        except json.JSONDecodeError as e:
+            if self.verbose or self.debug:
+                print(f"[ERROR] Failed to parse regression analysis JSON: {e}", file=sys.stderr)
+                print(f"[ERROR] Response may be truncated. Last 100 chars: ...{response[-100:]}", file=sys.stderr)
+                print(f"[ERROR] Increase ANALYZE_MAX_TOKENS in config.py (current: {config.ANALYZE_MAX_TOKENS})", file=sys.stderr)
+                if self.dump_prompts:
+                    print(f"[ERROR] Check dump files in {self.llm.dump_dir}/ for full response", file=sys.stderr)
 
         return []
 
@@ -325,7 +341,7 @@ Return ONLY verified findings as JSON array (discard false positives):
 [{{"category": "...", "type": "...", "message": "...", "evidence": "...", "severity": "..."}}]
 """
 
-        response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=8000)
+        response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=config.VERIFY_MAX_TOKENS)
 
         # Parse JSON response
         try:
@@ -333,9 +349,18 @@ Return ONLY verified findings as JSON array (discard false positives):
             if json_match:
                 verified = json.loads(json_match.group(0))
                 return verified if isinstance(verified, list) else []
-        except json.JSONDecodeError:
-            if self.verbose:
-                print("Warning: Failed to parse verification JSON, keeping original findings")
+            else:
+                if self.verbose or self.debug:
+                    print("[WARNING] No JSON array found in verification response", file=sys.stderr)
+                    print(f"[WARNING] Response preview: {response[:200]}...", file=sys.stderr)
+                    print("[WARNING] Keeping original findings", file=sys.stderr)
+                return findings
+        except json.JSONDecodeError as e:
+            if self.verbose or self.debug:
+                print(f"[ERROR] Failed to parse verification JSON: {e}", file=sys.stderr)
+                print(f"[ERROR] Response may be truncated. Last 100 chars: ...{response[-100:]}", file=sys.stderr)
+                print(f"[ERROR] Increase VERIFY_MAX_TOKENS in config.py (current: {config.VERIFY_MAX_TOKENS})", file=sys.stderr)
+                print("[WARNING] Keeping original findings to avoid losing data", file=sys.stderr)
             # If parsing fails, keep original findings rather than discarding
             return findings
 

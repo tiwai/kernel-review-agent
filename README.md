@@ -266,8 +266,13 @@ DEFAULT_PORT = 8080
 DEFAULT_MODEL = "gpt-4"
 
 # LLM parameters
-DEFAULT_MAX_TOKENS = 8000
+DEFAULT_MAX_TOKENS = 16000  # Increased for complex kernel reviews
 DEFAULT_TEMPERATURE = 0.1
+
+# Task-specific token limits
+CATEGORIZE_MAX_TOKENS = 8000    # Task 1: Categorize changes
+ANALYZE_MAX_TOKENS = 16000       # Task 2: Analyze for regressions
+VERIFY_MAX_TOKENS = 16000        # Task 3: Verify findings
 
 # Retry configuration
 MAX_RETRIES = 3
@@ -303,11 +308,21 @@ Ensure your LLM server is running and accessible:
 curl http://localhost:8080/v1/models
 ```
 
-### "Failed to parse JSON"
-The LLM may not be returning valid JSON. Try:
-- Using a more capable model
-- Increasing `DEFAULT_MAX_TOKENS` in config.py
-- Enabling `--verbose` to see raw responses
+### "Failed to parse JSON" or "Response may be truncated"
+The LLM response was cut off before completing the JSON output. This happens when the response exceeds the token limit.
+
+**Solutions:**
+- Increase task-specific token limits in config.py:
+  ```python
+  CATEGORIZE_MAX_TOKENS = 16000   # For large commits
+  ANALYZE_MAX_TOKENS = 32000      # For complex analysis
+  VERIFY_MAX_TOKENS = 16000
+  ```
+- Use a model with larger context window
+- Use `--dump-prompts` to see the full truncated response
+- Check warnings like `[WARNING] Response was truncated due to token limit`
+
+**Note:** The agent will automatically warn when responses are close to or exceed the token limit.
 
 ### "LLM request timed out"
 The LLM took too long to respond. Solutions:
