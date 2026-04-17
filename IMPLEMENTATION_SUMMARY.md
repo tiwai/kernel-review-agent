@@ -2,7 +2,7 @@
 
 ## Linux Kernel Commit Review Agent
 
-A complete AI-powered agent for reviewing Linux kernel commits has been implemented in `/home/tiwai/tmp/claude-test9/`.
+A complete AI-powered agent for reviewing Linux kernel commits has been implemented. The agent can be installed anywhere on your system and works from any directory.
 
 ## What Was Created
 
@@ -228,7 +228,8 @@ python kernel_review_agent.py --help
 
 # Test in a kernel tree
 cd /path/to/linux/kernel
-python /home/tiwai/tmp/claude-test9/kernel_review_agent.py HEAD --verbose
+kernel_review_agent.py HEAD --verbose
+# Or use full path: python /path/to/kernel-review-agent/kernel_review_agent.py HEAD --verbose
 ```
 
 ## Adaptations from Reference
@@ -296,4 +297,4 @@ The agent is complete and ready for use. To start reviewing commits:
 
 1. Ensure you have an OpenAI-compatible LLM server running
 2. Navigate to a Linux kernel git tree
-3. Run: `python /home/tiwai/tmp/claude-test9/kernel_review_agent.py HEAD --verbose`
+3. Run: `kernel_review_agent.py HEAD --verbose` (if in PATH) or use the full path to the agent

@@ -9,8 +9,15 @@
 ## Installation
 
 ```bash
-cd /home/tiwai/tmp/claude-test9
+# Clone or extract to your preferred location
+cd /path/to/kernel-review-agent
 pip install -r requirements.txt
+
+# Optional: Add to PATH for convenience
+export PATH="/path/to/kernel-review-agent:$PATH"
+
+# Or set KREVIEW_HOME environment variable
+export KREVIEW_HOME=/path/to/kernel-review-agent
 ```
 
 ## Start Your LLM Server
@@ -34,8 +41,14 @@ ollama run llama3
 # Navigate to a Linux kernel git tree
 cd /path/to/linux-kernel
 
-# Review the most recent commit
-python /home/tiwai/tmp/claude-test9/kernel_review_agent.py HEAD --host localhost --port 8080 --verbose
+# Review the most recent commit (if agent is in PATH)
+kernel_review_agent.py HEAD --host localhost --port 8080 --verbose
+
+# Or use full path
+python /path/to/kernel-review-agent/kernel_review_agent.py HEAD --host localhost --port 8080 --verbose
+
+# Or with KREVIEW_HOME set
+python $KREVIEW_HOME/kernel_review_agent.py HEAD --host localhost --port 8080 --verbose
 ```
 
 Expected output:
@@ -77,17 +90,22 @@ cat review-metadata-abc123def456.json
 
 ### Review Last 5 Commits
 ```bash
-python kernel_review_agent.py HEAD~5..HEAD --output-dir ./reviews/ --verbose
+kernel_review_agent.py HEAD~5..HEAD --output-dir ./reviews/ --verbose
 ```
 
 ### Compare with Upstream
 ```bash
-python kernel_review_agent.py HEAD --upstream-branch upstream --verbose
+kernel_review_agent.py HEAD --upstream-branch upstream --verbose
 ```
 
 ### Review Specific Commit Range
 ```bash
-python kernel_review_agent.py v6.8..v6.9 --output-dir ./v6.9-reviews/
+kernel_review_agent.py v6.8..v6.9 --output-dir ./v6.9-reviews/
+```
+
+**Note**: If the agent is not in your PATH, use the full path:
+```bash
+/path/to/kernel-review-agent/kernel_review_agent.py HEAD --verbose
 ```
 
 ## Troubleshooting
@@ -110,7 +128,7 @@ curl http://localhost:8080/v1/models
 
 ## Configuration
 
-Edit `config.py` to change defaults:
+Edit `$KREVIEW_HOME/config.py` (or `/path/to/kernel-review-agent/config.py`) to change defaults:
 ```python
 DEFAULT_HOST = "localhost"     # Your LLM server host
 DEFAULT_PORT = 8080            # Your LLM server port
@@ -131,8 +149,9 @@ The `<sha>` suffix (first 12 chars of commit SHA) prevents overwriting.
 
 - Read `README.md` for comprehensive documentation
 - Check `IMPLEMENTATION_SUMMARY.md` for architecture details
-- Review `prompts/` directory to understand the review protocols
+- Review the `prompts/` directory to understand the review protocols
 - Customize subsystem matching in `prompt_management/subsystem_matcher.py`
+- Set up `KREVIEW_HOME` for easier access: `export KREVIEW_HOME=/your/install/path`
 
 ## Tips for Best Results
 
@@ -144,6 +163,7 @@ The `<sha>` suffix (first 12 chars of commit SHA) prevents overwriting.
 
 ## Support
 
-- Check the code in `/home/tiwai/tmp/claude-test9/`
-- Review the kernel prompts in `prompts/` directory
+- Check the code in the installation directory (`$KREVIEW_HOME` or `/path/to/kernel-review-agent/`)
+- Review the kernel prompts in the `prompts/` directory
 - Examine example outputs to understand the format
+- Use `--debug` to see installation paths: `kernel_review_agent.py HEAD --debug`
