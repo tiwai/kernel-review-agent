@@ -86,6 +86,24 @@ Examples:
         help="Enable verbose output"
     )
 
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug output with detailed step information"
+    )
+
+    parser.add_argument(
+        "--dump-prompts",
+        action="store_true",
+        help="Dump LLM prompts and responses to files for debugging"
+    )
+
+    parser.add_argument(
+        "--dump-dir",
+        default=config.DEBUG_DUMP_DIR,
+        help=f"Directory for prompt/response dumps (default: {config.DEBUG_DUMP_DIR})"
+    )
+
     args = parser.parse_args()
 
     # Check if in git repository
@@ -94,6 +112,21 @@ Examples:
         print("Error: Must run in a git repository", file=sys.stderr)
         return 1
 
+    # Show debug info if enabled
+    if args.debug:
+        print(f"[DEBUG] Configuration:")
+        print(f"[DEBUG]   LLM: {args.host}:{args.port}")
+        print(f"[DEBUG]   Model: {args.model}")
+        print(f"[DEBUG]   Verbose: {args.verbose}")
+        print(f"[DEBUG]   Debug: {args.debug}")
+        print(f"[DEBUG]   Dump prompts: {args.dump_prompts}")
+        if args.dump_prompts:
+            print(f"[DEBUG]   Dump directory: {args.dump_dir}")
+        print(f"[DEBUG]   Output directory: {args.output_dir}")
+        if args.upstream_branch:
+            print(f"[DEBUG]   Upstream branch: {args.upstream_branch}")
+        print()
+
     # Initialize components
     try:
         llm = OpenAIClient(
@@ -101,7 +134,10 @@ Examples:
             port=args.port,
             api_key=args.api_key,
             model=args.model,
-            verbose=args.verbose
+            verbose=args.verbose,
+            debug=args.debug,
+            dump_prompts=args.dump_prompts,
+            dump_dir=args.dump_dir
         )
     except Exception as e:
         print(f"Error: Failed to connect to LLM API at {args.host}:{args.port}", file=sys.stderr)
@@ -110,7 +146,13 @@ Examples:
 
     prompts = PromptLoader()
     matcher = SubsystemMatcher()
-    workflow = ReviewWorkflow(llm, prompts, matcher, verbose=args.verbose)
+    workflow = ReviewWorkflow(
+        llm,
+        prompts,
+        matcher,
+        verbose=args.verbose,
+        debug=args.debug
+    )
     formatter = ReportFormatter()
     metadata_gen = MetadataGenerator()
 

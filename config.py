@@ -20,3 +20,6 @@ DEFAULT_TEMPERATURE = 0.1
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0  # seconds
 RETRY_BACKOFF = 2.0  # exponential backoff multiplier
+
+# Debug options
+DEBUG_DUMP_DIR = "debug_dumps"  # Directory for prompt/response dumps

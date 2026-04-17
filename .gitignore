@@ -20,6 +20,9 @@ ENV/
 review-inline-*.txt
 review-metadata-*.json
 
+# Debug dumps
+debug_dumps/
+
 # OS
 .DS_Store
 Thumbs.db

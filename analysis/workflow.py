@@ -26,7 +26,8 @@ class ReviewWorkflow:
         llm_client: OpenAIClient,
         prompt_loader: PromptLoader,
         subsystem_matcher: SubsystemMatcher,
-        verbose: bool = False
+        verbose: bool = False,
+        debug: bool = False
     ):
         """
         Initialize review workflow.
@@ -36,11 +37,13 @@ class ReviewWorkflow:
             prompt_loader: Prompt loader
             subsystem_matcher: Subsystem matcher
             verbose: Enable verbose output
+            debug: Enable debug output
         """
         self.llm = llm_client
         self.prompts = prompt_loader
         self.matcher = subsystem_matcher
         self.verbose = verbose
+        self.debug = debug
 
     def execute_review(self, commit: Commit) -> ReviewResult:
         """
@@ -59,38 +62,84 @@ class ReviewWorkflow:
         # Task 0: Context management (automated)
         if self.verbose:
             print("[1/5] Gathering context...")
+        if self.debug:
+            print(f"[DEBUG] Task 0: Context management")
+            print(f"[DEBUG] Commit SHA: {commit.sha}")
+            print(f"[DEBUG] Files changed: {len(commit.files)}")
+            print(f"[DEBUG] Diff size: {len(commit.diff)} chars")
+
         context = self._gather_context(commit)
+
+        if self.debug:
+            print(f"[DEBUG] Context gathered:")
+            print(f"[DEBUG]   - Changed functions: {context.get('changed_functions', [])}")
+            print(f"[DEBUG]   - Files: {context.get('files', [])}")
 
         # Match subsystems
         subsystems = self.matcher.match_diff(commit.files, commit.diff)
         if self.verbose and subsystems:
             print(f"      Matched subsystems: {', '.join(subsystems)}")
+        if self.debug:
+            print(f"[DEBUG] Subsystems matched: {subsystems}")
 
         # Task 1: Categorize changes (LLM-driven)
         if self.verbose:
             print("\n[2/5] Categorizing changes...")
+        if self.debug:
+            print(f"[DEBUG] Task 1: Categorizing changes")
+            print(f"[DEBUG] Calling LLM for categorization...")
+
         categories = self._categorize_changes(commit, context)
+
         if self.verbose:
             print(f"      Found {len(categories)} change categories")
+        if self.debug:
+            print(f"[DEBUG] Categories:")
+            for cat in categories:
+                print(f"[DEBUG]   - {cat.get('id')}: {cat.get('type')} - {cat.get('description', '')[:60]}")
 
         # Task 2: Analyze for regressions (LLM-driven)
         if self.verbose:
             print("\n[3/5] Analyzing for regressions...")
+        if self.debug:
+            print(f"[DEBUG] Task 2: Analyzing for regressions")
+            print(f"[DEBUG] Loading subsystem guides: {subsystems}")
+            print(f"[DEBUG] Calling LLM for regression analysis...")
+
         findings = self._analyze_regressions(commit, categories, context, subsystems)
+
         if self.verbose:
             print(f"      Found {len(findings)} potential issues")
+        if self.debug:
+            print(f"[DEBUG] Findings:")
+            for i, finding in enumerate(findings):
+                print(f"[DEBUG]   {i+1}. {finding.get('type')}: {finding.get('message', '')[:60]}...")
 
         # Task 3: Verify findings (eliminate false positives)
         if self.verbose:
             print("\n[4/5] Verifying findings...")
+        if self.debug:
+            print(f"[DEBUG] Task 3: Verifying findings")
+            print(f"[DEBUG] Applying false-positive checks to {len(findings)} findings...")
+
         verified = self._verify_findings(findings, context, commit)
+
         if self.verbose:
             print(f"      {len(verified)} issues after verification")
+        if self.debug:
+            discarded = len(findings) - len(verified)
+            print(f"[DEBUG] Verification complete: {len(verified)} verified, {discarded} discarded as false positives")
 
         # Task 4: Generate summary
         if self.verbose:
             print("\n[5/5] Generating summary...")
+        if self.debug:
+            print(f"[DEBUG] Task 4: Generating summary")
+
         summary = self._generate_summary(commit, verified)
+
+        if self.debug:
+            print(f"[DEBUG] Summary: {summary}")
 
         if self.verbose:
             print(f"\nReview complete: {len(verified)} issue(s) found\n")

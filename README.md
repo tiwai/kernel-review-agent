@@ -75,6 +75,33 @@ python kernel_review_agent.py HEAD --output-dir ./reviews/
 python kernel_review_agent.py HEAD --verbose
 ```
 
+### Debug Options
+
+```bash
+# Enable debug output with detailed step information
+python kernel_review_agent.py HEAD --debug
+
+# Dump LLM prompts and responses to files for debugging
+python kernel_review_agent.py HEAD --dump-prompts
+
+# Specify custom dump directory
+python kernel_review_agent.py HEAD --dump-prompts --dump-dir ./debug/
+
+# Combine verbose and debug
+python kernel_review_agent.py HEAD --verbose --debug --dump-prompts
+```
+
+**Debug features:**
+- `--debug`: Shows detailed information at each step (context gathered, categories found, LLM call details, token usage)
+- `--dump-prompts`: Saves all LLM prompts and responses to numbered files (001_prompt.txt, 001_response.txt, etc.)
+- `--dump-dir`: Specifies where to save dump files (default: `debug_dumps/`)
+
+The dump files are useful for:
+- Understanding what prompts are sent to the LLM
+- Debugging LLM response parsing issues
+- Analyzing token usage and prompt effectiveness
+- Fine-tuning prompts for better results
+
 ## Output Files
 
 For each commit reviewed, two files are generated:
