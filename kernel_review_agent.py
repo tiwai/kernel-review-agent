@@ -104,6 +104,12 @@ Examples:
         help=f"Directory for prompt/response dumps (default: {config.DEBUG_DUMP_DIR})"
     )
 
+    parser.add_argument(
+        "--skip-verification",
+        action="store_true",
+        help="Skip false-positive verification step (faster but may report more issues)"
+    )
+
     args = parser.parse_args()
 
     # Check if in git repository
@@ -123,6 +129,7 @@ Examples:
         print(f"[DEBUG]   Dump prompts: {args.dump_prompts}")
         if args.dump_prompts:
             print(f"[DEBUG]   Dump directory: {args.dump_dir}")
+        print(f"[DEBUG]   Skip verification: {args.skip_verification}")
         print(f"[DEBUG]   Output directory: {args.output_dir}")
         if args.upstream_branch:
             print(f"[DEBUG]   Upstream branch: {args.upstream_branch}")
@@ -156,7 +163,8 @@ Examples:
         prompts,
         matcher,
         verbose=args.verbose,
-        debug=args.debug
+        debug=args.debug,
+        skip_verification=args.skip_verification
     )
     formatter = ReportFormatter()
     metadata_gen = MetadataGenerator()

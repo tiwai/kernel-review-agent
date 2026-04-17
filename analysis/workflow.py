@@ -29,7 +29,8 @@ class ReviewWorkflow:
         prompt_loader: PromptLoader,
         subsystem_matcher: SubsystemMatcher,
         verbose: bool = False,
-        debug: bool = False
+        debug: bool = False,
+        skip_verification: bool = False
     ):
         """
         Initialize review workflow.
@@ -40,12 +41,14 @@ class ReviewWorkflow:
             subsystem_matcher: Subsystem matcher
             verbose: Enable verbose output
             debug: Enable debug output
+            skip_verification: Skip false-positive verification step
         """
         self.llm = llm_client
         self.prompts = prompt_loader
         self.matcher = subsystem_matcher
         self.verbose = verbose
         self.debug = debug
+        self.skip_verification = skip_verification
 
     def execute_review(self, commit: Commit) -> ReviewResult:
         """
@@ -118,19 +121,26 @@ class ReviewWorkflow:
                 print(f"[DEBUG]   {i+1}. {finding.get('type')}: {finding.get('message', '')[:60]}...")
 
         # Task 3: Verify findings (eliminate false positives)
-        if self.verbose:
-            print("\n[4/5] Verifying findings...")
-        if self.debug:
-            print(f"[DEBUG] Task 3: Verifying findings")
-            print(f"[DEBUG] Applying false-positive checks to {len(findings)} findings...")
+        if self.skip_verification:
+            if self.verbose:
+                print("\n[4/5] Skipping verification (--skip-verification enabled)...")
+            if self.debug:
+                print(f"[DEBUG] Task 3: SKIPPED (verification disabled)")
+            verified = findings
+        else:
+            if self.verbose:
+                print("\n[4/5] Verifying findings...")
+            if self.debug:
+                print(f"[DEBUG] Task 3: Verifying findings")
+                print(f"[DEBUG] Applying false-positive checks to {len(findings)} findings...")
 
-        verified = self._verify_findings(findings, context, commit)
+            verified = self._verify_findings(findings, context, commit)
 
-        if self.verbose:
-            print(f"      {len(verified)} issues after verification")
-        if self.debug:
-            discarded = len(findings) - len(verified)
-            print(f"[DEBUG] Verification complete: {len(verified)} verified, {discarded} discarded as false positives")
+            if self.verbose:
+                print(f"      {len(verified)} issues after verification")
+            if self.debug:
+                discarded = len(findings) - len(verified)
+                print(f"[DEBUG] Verification complete: {len(verified)} verified, {discarded} discarded as false positives")
 
         # Task 4: Generate summary
         if self.verbose:

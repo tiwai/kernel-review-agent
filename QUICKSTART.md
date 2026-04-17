@@ -103,6 +103,12 @@ kernel_review_agent.py HEAD --upstream-branch upstream --verbose
 kernel_review_agent.py v6.8..v6.9 --output-dir ./v6.9-reviews/
 ```
 
+### Quick Scan (Skip Verification)
+```bash
+# Faster review by skipping false-positive verification
+kernel_review_agent.py HEAD~10..HEAD --skip-verification
+```
+
 **Note**: If the agent is not in your PATH, use the full path:
 ```bash
 /path/to/kernel-review-agent/kernel_review_agent.py HEAD --verbose

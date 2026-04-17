@@ -106,6 +106,29 @@ python kernel_review_agent.py HEAD --output-dir ./reviews/
 python kernel_review_agent.py HEAD --verbose
 ```
 
+### Performance Options
+
+```bash
+# Skip false-positive verification for faster review
+python kernel_review_agent.py HEAD --skip-verification
+
+# This skips the verification step, which can:
+# - Reduce review time by 20-40%
+# - Report more potential issues (may include false positives)
+# - Be useful for initial quick scans
+```
+
+**When to use `--skip-verification`:**
+- Quick initial scans of large commit ranges
+- When verification step times out frequently
+- When you prefer to manually review all findings
+- During development/testing to see raw analysis results
+
+**Trade-offs:**
+- **Faster**: Skips one LLM call per commit (saves time and tokens)
+- **More findings**: May report defensive programming as issues
+- **Less precise**: False positives not filtered out
+
 ### Debug Options
 
 ```bash
@@ -208,8 +231,10 @@ kernel_review_agent.py          # CLI entry point
 1. **Context Gathering**: Extract changed functions, files, and structures
 2. **Change Categorization**: Break changes into categories (control-flow, resource-management, etc.)
 3. **Regression Analysis**: Apply bug patterns and subsystem-specific checks
-4. **Verification**: Eliminate false positives using concrete evidence requirements
+4. **Verification**: Eliminate false positives using concrete evidence requirements (optional, use `--skip-verification` to disable)
 5. **Reporting**: Generate LKML-compliant report and JSON metadata
+
+**Note**: The verification step (Task 4) can be skipped with `--skip-verification` for faster reviews at the cost of potentially more false positives.
 
 ## Subsystem Coverage
 
