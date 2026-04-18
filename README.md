@@ -48,34 +48,16 @@ export PATH="/path/to/kernel-review-agent:$PATH"
 kernel_review_agent.py HEAD
 ```
 
-### Environment Variables
-
-**`KREVIEW_HOME`** (optional): Override the installation directory location
-```bash
-export KREVIEW_HOME=/opt/kernel-review-agent
-python kernel_review_agent.py HEAD
-```
-
-This is useful if:
-- The agent is installed in a non-standard location
-- You want to use a custom set of review prompts (uses `$KREVIEW_HOME/prompts`)
-- You're running from a symlink or wrapper script
-
 ### Custom Prompts Directory
 
 You can use custom review prompts instead of the defaults:
 
 ```bash
-# Method 1: Via KREVIEW_HOME (uses $KREVIEW_HOME/prompts)
-export KREVIEW_HOME=/path/to/custom-installation
-python kernel_review_agent.py HEAD
-
-# Method 2: Via --prompts-dir (explicit path)
+# Use custom prompts directory
 python kernel_review_agent.py HEAD --prompts-dir /path/to/custom-prompts
 
-# Method 3: Combine both (--prompts-dir takes precedence)
-export KREVIEW_HOME=/opt/kernel-review-agent
-python kernel_review_agent.py HEAD --prompts-dir /my/custom/prompts
+# Default uses installation directory
+python kernel_review_agent.py HEAD  # Uses <install-dir>/prompts
 ```
 
 This is useful for:

@@ -25,9 +25,6 @@ pip install google-cloud-aiplatform    # For Google Vertex AI
 
 # Optional: Add to PATH for convenience
 export PATH="/path/to/kernel-review-agent:$PATH"
-
-# Or set KREVIEW_HOME environment variable
-export KREVIEW_HOME=/path/to/kernel-review-agent
 ```
 
 ## Set Up Your LLM Provider
@@ -168,7 +165,7 @@ curl http://localhost:8080/v1/models
 
 ## Configuration
 
-Edit `$KREVIEW_HOME/config.py` (or `/path/to/kernel-review-agent/config.py`) to change defaults:
+Edit `/path/to/kernel-review-agent/config.py` to change defaults:
 ```python
 DEFAULT_HOST = "localhost"     # Your LLM server host
 DEFAULT_PORT = 8080            # Your LLM server port
@@ -191,7 +188,6 @@ The `<sha>` suffix (first 12 chars of commit SHA) prevents overwriting.
 - Check `IMPLEMENTATION_SUMMARY.md` for architecture details
 - Review the `prompts/` directory to understand the review protocols
 - Customize subsystem matching in `prompt_management/subsystem_matcher.py`
-- Set up `KREVIEW_HOME` for easier access: `export KREVIEW_HOME=/your/install/path`
 - Use custom prompts with `--prompts-dir /path/to/custom-prompts` if needed
 
 ## Tips for Best Results
@@ -204,7 +200,7 @@ The `<sha>` suffix (first 12 chars of commit SHA) prevents overwriting.
 
 ## Support
 
-- Check the code in the installation directory (`$KREVIEW_HOME` or `/path/to/kernel-review-agent/`)
+- Check the code in the installation directory (`/path/to/kernel-review-agent/`)
 - Review the kernel prompts in the `prompts/` directory
 - Examine example outputs to understand the format
 - Use `--debug` to see installation paths: `kernel_review_agent.py HEAD --debug`

@@ -3,8 +3,7 @@
 import os
 
 # Installation directory (where this config.py is located)
-# Can be overridden with KREVIEW_HOME environment variable
-INSTALL_DIR = os.environ.get('KREVIEW_HOME', os.path.dirname(os.path.abspath(__file__)))
+INSTALL_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Default prompts directory
 # Can be overridden with --prompts-dir command-line option

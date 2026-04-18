@@ -141,7 +141,7 @@ Examples:
     parser.add_argument(
         "--prompts-dir",
         default=config.DEFAULT_PROMPTS_DIR,
-        help=f"Directory containing review prompts (default: $KREVIEW_HOME/prompts or {config.DEFAULT_PROMPTS_DIR})"
+        help=f"Directory containing review prompts (default: {config.DEFAULT_PROMPTS_DIR})"
     )
 
     args = parser.parse_args()
@@ -227,7 +227,7 @@ Examples:
     # Verify prompts directory exists
     if not os.path.exists(args.prompts_dir):
         print(f"Error: Prompts directory not found: {args.prompts_dir}", file=sys.stderr)
-        print(f"Tip: Set KREVIEW_HOME environment variable or use --prompts-dir option", file=sys.stderr)
+        print(f"Tip: Use --prompts-dir option to specify the prompts directory", file=sys.stderr)
         return 1
 
     try:
