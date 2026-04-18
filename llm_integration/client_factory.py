@@ -16,7 +16,7 @@ def create_llm_client(
     Create an LLM client based on provider.
 
     Args:
-        provider: Provider name (openai, anthropic, google, ollama)
+        provider: Provider name (openai, anthropic, google, ollama, anthropic-vertex)
         verbose: Enable verbose output
         debug: Enable debug output
         dump_prompts: Dump prompts and responses to files
@@ -52,6 +52,16 @@ def create_llm_client(
             **kwargs
         )
 
+    elif provider == "anthropic-vertex":
+        from .anthropic_vertex_client import AnthropicVertexClient
+        return AnthropicVertexClient(
+            verbose=verbose,
+            debug=debug,
+            dump_prompts=dump_prompts,
+            dump_dir=dump_dir,
+            **kwargs
+        )
+
     elif provider == "google":
         from .google_client import GoogleClient
         return GoogleClient(
@@ -75,7 +85,7 @@ def create_llm_client(
     else:
         raise ValueError(
             f"Unknown provider: {provider}. "
-            f"Supported providers: openai, anthropic, google, ollama"
+            f"Supported providers: openai, anthropic, anthropic-vertex, google, ollama"
         )
 
 

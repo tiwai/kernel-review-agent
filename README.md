@@ -21,10 +21,13 @@ cd /path/to/kernel-review-agent
 # Install core dependencies (OpenAI-compatible and Ollama support)
 pip install -r requirements.txt
 
-# Optional: Install Anthropic Claude API support
+# Optional: Install Anthropic Claude API support (direct)
 pip install anthropic
 
-# Optional: Install Google Vertex AI support
+# Optional: Install Claude on Google Vertex AI support
+pip install 'anthropic[vertex]'
+
+# Optional: Install Google Vertex AI support (Gemini)
 pip install google-cloud-aiplatform
 
 # Verify installation
@@ -66,7 +69,8 @@ This is useful if:
   - **OpenAI-compatible** server (llama.cpp, vLLM, etc.) - uses `openai` package
   - **Ollama** - local LLM server - uses `openai` package
   - **Anthropic Claude API** - requires `anthropic` package and API key
-  - **Google Vertex AI** - requires `google-cloud-aiplatform` package and GCP project
+  - **Claude on Google Vertex AI** - requires `anthropic[vertex]` package and GCP project
+  - **Google Vertex AI (Gemini)** - requires `google-cloud-aiplatform` package and GCP project
 - **Linux kernel git tree** (run from within a kernel repository)
 
 ## Usage
@@ -109,7 +113,7 @@ python kernel_review_agent.py HEAD --host localhost --port 11434 --model llama3.
 python kernel_review_agent.py HEAD --provider ollama --model llama3.1
 ```
 
-#### Anthropic Claude API
+#### Anthropic Claude API (Direct)
 ```bash
 # Set API key via environment variable
 export ANTHROPIC_API_KEY=your-api-key-here
@@ -119,7 +123,22 @@ python kernel_review_agent.py HEAD --provider anthropic --model claude-3-5-sonne
 python kernel_review_agent.py HEAD --provider anthropic --anthropic-api-key your-key --model claude-3-5-sonnet-20241022
 ```
 
-#### Google Vertex AI
+#### Claude on Google Vertex AI
+```bash
+# Set project ID via environment variable
+export GOOGLE_CLOUD_PROJECT=your-project-id
+python kernel_review_agent.py HEAD --provider anthropic-vertex --model claude-3-5-sonnet@20241022
+
+# Or pass project ID and location directly
+python kernel_review_agent.py HEAD --provider anthropic-vertex \
+    --google-project your-project-id \
+    --google-location us-east5 \
+    --model claude-3-5-sonnet@20241022
+```
+
+**Note**: Claude on Vertex AI uses `@` notation for model versions (e.g., `claude-3-5-sonnet@20241022`) and is available in specific regions like `us-east5` and `europe-west1`.
+
+#### Google Vertex AI (Gemini)
 ```bash
 # Set project ID via environment variable
 export GOOGLE_CLOUD_PROJECT=your-project-id

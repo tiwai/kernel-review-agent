@@ -71,7 +71,7 @@ Examples:
 
     parser.add_argument(
         "--provider",
-        choices=["openai", "anthropic", "google", "ollama"],
+        choices=["openai", "anthropic", "anthropic-vertex", "google", "ollama"],
         help="LLM provider (default: auto-detect from other options)"
     )
 
@@ -188,6 +188,11 @@ Examples:
         elif provider == 'anthropic':
             if args.anthropic_api_key:
                 provider_kwargs['api_key'] = args.anthropic_api_key
+        elif provider == 'anthropic-vertex':
+            if args.google_project:
+                provider_kwargs['project_id'] = args.google_project
+            if args.google_location:
+                provider_kwargs['location'] = args.google_location
         elif provider == 'google':
             if args.google_project:
                 provider_kwargs['project_id'] = args.google_project

@@ -160,6 +160,75 @@ kernel_review_agent.py HEAD --provider google \
 
 ---
 
+### 5. Claude on Google Vertex AI
+
+**Use case**: Claude models deployed through Google Cloud infrastructure
+
+**Why use this**: Get Claude's excellent code analysis with Google Cloud's enterprise features, unified billing with GCP, and potentially better latency if you're already in GCP.
+
+**Installation**:
+```bash
+pip install 'anthropic[vertex]'
+```
+
+**Setup**:
+```bash
+# Authenticate with Google Cloud
+gcloud auth application-default login
+
+# Set your project ID
+export GOOGLE_CLOUD_PROJECT=your-project-id
+
+# Ensure Vertex AI API is enabled and Claude models are accessible
+gcloud services enable aiplatform.googleapis.com
+```
+
+**Usage**:
+```bash
+# Using environment variable for project ID
+kernel_review_agent.py HEAD --provider anthropic-vertex --model claude-3-5-sonnet@20241022
+
+# Passing project ID and location directly
+kernel_review_agent.py HEAD --provider anthropic-vertex \
+    --google-project your-project-id \
+    --google-location us-east5 \
+    --model claude-3-5-sonnet@20241022
+```
+
+**Configuration**:
+- `--google-project`: GCP project ID (or set `GOOGLE_CLOUD_PROJECT` env var)
+- `--google-location`: GCP region (default: us-east5 for Claude)
+- `--model`: Model name
+
+**Available models**:
+- `claude-3-5-sonnet@20241022` - Latest Claude 3.5 Sonnet (recommended)
+- `claude-3-opus@20240229` - Most powerful, slower
+- `claude-3-sonnet@20240229` - Previous Sonnet version
+- `claude-3-haiku@20240307` - Fastest, most economical
+
+**Available regions for Claude on Vertex**:
+- `us-east5` (default)
+- `europe-west1`
+
+**Note**: 
+- Requires active GCP project with billing
+- Claude models on Vertex AI may have different pricing than direct Anthropic API
+- You must have access enabled for Claude models in your GCP project
+- See Google Cloud Vertex AI pricing for Claude
+
+**Benefits over direct Anthropic API**:
+- Unified GCP billing and cost management
+- VPC-SC (Service Controls) support for enterprise security
+- Potentially lower latency if you're already in GCP
+- Integration with other Google Cloud services
+
+**Benefits over Gemini on Vertex**:
+- Claude's superior code understanding and analysis
+- More conversational and detailed responses
+- Better at following complex instructions
+
+---
+
 ## Choosing a Provider
 
 ### For Local Development
@@ -177,15 +246,21 @@ kernel_review_agent.py HEAD --provider google \
 
 ### For Production / CI/CD
 
-**Best: Anthropic Claude API**
+**Best: Anthropic Claude API (direct)**
 - Excellent code understanding
 - Reliable performance
 - No infrastructure management
-- Pay-per-use pricing
+- Simple API key authentication
 
-**Alternative: Google Vertex AI**
+**Alternative 1: Claude on Google Vertex AI**
+- Same Claude quality with GCP enterprise features
+- If already using GCP (unified billing)
+- VPC-SC support for security compliance
+- Potentially better latency in GCP regions
+
+**Alternative 2: Google Vertex AI (Gemini)**
 - If already using GCP
-- Enterprise support
+- Fast (Gemini Flash)
 - Good integration with other GCP services
 
 ### For Quick Testing
@@ -304,8 +379,10 @@ kernel_review_agent.py HEAD --provider ollama --skip-verification
 | Ollama (8B) | Fast | Good | Free | Easy |
 | Ollama (70B) | Slow | Excellent | Free | Medium |
 | llama.cpp | Medium | Good | Free | Medium |
-| Anthropic Sonnet | Fast | Excellent | $$ | Easy |
-| Anthropic Opus | Slow | Best | $$$$ | Easy |
+| Anthropic Sonnet (direct) | Fast | Excellent | $$ | Easy |
+| Anthropic Opus (direct) | Slow | Best | $$$$ | Easy |
+| Claude on Vertex Sonnet | Fast | Excellent | $$ | Hard |
+| Claude on Vertex Opus | Slow | Best | $$$$ | Hard |
 | Google Gemini Flash | Very Fast | Good | $ | Hard |
 | Google Gemini Pro | Medium | Excellent | $$ | Hard |
 
@@ -314,3 +391,4 @@ kernel_review_agent.py HEAD --provider ollama --skip-verification
 - Quality refers to regression detection accuracy
 - Cost is relative ($ = cheapest paid option, $$$$ = most expensive)
 - Setup difficulty includes authentication, configuration, etc.
+- Claude on Vertex has same quality as direct Anthropic API but requires GCP setup

@@ -11,6 +11,11 @@ except ImportError:
     AnthropicClient = None
 
 try:
+    from .anthropic_vertex_client import AnthropicVertexClient
+except ImportError:
+    AnthropicVertexClient = None
+
+try:
     from .google_client import GoogleClient
 except ImportError:
     GoogleClient = None
@@ -24,6 +29,7 @@ __all__ = [
     'LLMClient',
     'OpenAIClient',
     'AnthropicClient',
+    'AnthropicVertexClient',
     'GoogleClient',
     'OllamaClient',
     'create_llm_client',

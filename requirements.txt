@@ -2,5 +2,6 @@
 openai>=1.0.0
 
 # Optional dependencies - install only if using the respective provider
-# anthropic>=0.18.0  # For Anthropic Claude API
-# google-cloud-aiplatform>=1.38.0  # For Google Vertex AI
+# anthropic>=0.18.0  # For Anthropic Claude API (direct)
+# anthropic[vertex]>=0.18.0  # For Claude on Google Vertex AI
+# google-cloud-aiplatform>=1.38.0  # For Google Vertex AI (Gemini)
