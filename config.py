@@ -1,7 +1,8 @@
-"""Configuration defaults for kernel review agent."""
+"""Configuration management for kernel review agent."""
 
 import os
 import sys
+import json
 
 
 def find_prompts_directory():
@@ -47,6 +48,100 @@ def find_prompts_directory():
     return local_prompts
 
 
+def load_config_file(config_path):
+    """
+    Load configuration from JSON file.
+
+    Args:
+        config_path: Path to JSON config file
+
+    Returns:
+        dict: Configuration dictionary, or {} if file doesn't exist or is invalid
+    """
+    if not os.path.isfile(config_path):
+        return {}
+
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            return config if isinstance(config, dict) else {}
+    except (json.JSONDecodeError, IOError) as e:
+        print(f"Warning: Failed to load config file {config_path}: {e}", file=sys.stderr)
+        return {}
+
+
+def load_configuration():
+    """
+    Load configuration from system and user config files.
+
+    Configuration is loaded in this order (later overrides earlier):
+    1. Hardcoded defaults (in this file)
+    2. System-wide config: /etc/kernel-review-agent/config.json
+    3. User config: ~/.config/kernel-review-agent/config.json
+
+    Returns:
+        dict: Merged configuration
+    """
+    # Start with hardcoded defaults
+    config = {
+        # LLM API defaults
+        'DEFAULT_HOST': 'localhost',
+        'DEFAULT_PORT': 8080,
+        'DEFAULT_API_KEY': 'dummy',
+        'DEFAULT_MODEL': 'gpt-4',
+
+        # LLM parameters
+        'DEFAULT_MAX_TOKENS': 16000,
+        'DEFAULT_TEMPERATURE': 0.1,
+
+        # Task-specific token limits
+        'CATEGORIZE_MAX_TOKENS': 8000,
+        'ANALYZE_MAX_TOKENS': 16000,
+        'VERIFY_MAX_TOKENS': 16000,
+
+        # Response truncation detection
+        'TRUNCATION_WARNING_THRESHOLD': 0.95,
+
+        # Retry configuration
+        'MAX_RETRIES': 3,
+        'RETRY_DELAY': 1.0,
+        'RETRY_BACKOFF': 2.0,
+
+        # Timeout configuration
+        'LLM_TIMEOUT': 300,
+        'CONNECT_TIMEOUT': 10,
+
+        # Output defaults
+        'DEFAULT_OUTPUT_DIR': '.',
+
+        # Debug options
+        'DEBUG_DUMP_DIR': 'debug_dumps',
+    }
+
+    # Load system-wide config
+    system_config_paths = [
+        '/etc/kernel-review-agent/config.json',
+        '/usr/local/etc/kernel-review-agent/config.json',
+    ]
+
+    for system_path in system_config_paths:
+        system_config = load_config_file(system_path)
+        if system_config:
+            config.update(system_config)
+            break  # Use first found system config
+
+    # Load user config (overrides system config)
+    user_config_path = os.path.expanduser('~/.config/kernel-review-agent/config.json')
+    user_config = load_config_file(user_config_path)
+    if user_config:
+        config.update(user_config)
+
+    return config
+
+
+# Load configuration from files
+_config = load_configuration()
+
 # Installation directory (where this config.py is located)
 INSTALL_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -54,38 +149,24 @@ INSTALL_DIR = os.path.dirname(os.path.abspath(__file__))
 # Can be overridden with --prompts-dir command-line option
 DEFAULT_PROMPTS_DIR = find_prompts_directory()
 
-# LLM API defaults
-DEFAULT_HOST = "localhost"
-DEFAULT_PORT = 8080
-DEFAULT_API_KEY = "dummy"
+# Export configuration values
+DEFAULT_HOST = _config['DEFAULT_HOST']
+DEFAULT_PORT = _config['DEFAULT_PORT']
+DEFAULT_API_KEY = _config['DEFAULT_API_KEY']
+DEFAULT_MODEL = _config['DEFAULT_MODEL']
+DEFAULT_MAX_TOKENS = _config['DEFAULT_MAX_TOKENS']
+DEFAULT_TEMPERATURE = _config['DEFAULT_TEMPERATURE']
+CATEGORIZE_MAX_TOKENS = _config['CATEGORIZE_MAX_TOKENS']
+ANALYZE_MAX_TOKENS = _config['ANALYZE_MAX_TOKENS']
+VERIFY_MAX_TOKENS = _config['VERIFY_MAX_TOKENS']
+TRUNCATION_WARNING_THRESHOLD = _config['TRUNCATION_WARNING_THRESHOLD']
+MAX_RETRIES = _config['MAX_RETRIES']
+RETRY_DELAY = _config['RETRY_DELAY']
+RETRY_BACKOFF = _config['RETRY_BACKOFF']
+LLM_TIMEOUT = _config['LLM_TIMEOUT']
+CONNECT_TIMEOUT = _config['CONNECT_TIMEOUT']
+DEFAULT_OUTPUT_DIR = _config['DEFAULT_OUTPUT_DIR']
+DEBUG_DUMP_DIR = _config['DEBUG_DUMP_DIR']
 
-# Output defaults
-DEFAULT_OUTPUT_DIR = "."
-
-# Git defaults
+# Git defaults (not configurable via JSON yet, but could be added)
 DEFAULT_UPSTREAM_BRANCH = None
-
-# LLM parameters
-DEFAULT_MAX_TOKENS = 16000  # Increased for complex kernel reviews
-DEFAULT_MODEL = "gpt-4"
-DEFAULT_TEMPERATURE = 0.1
-
-# Task-specific token limits
-CATEGORIZE_MAX_TOKENS = 8000    # Task 1: Categorize changes
-ANALYZE_MAX_TOKENS = 16000       # Task 2: Analyze for regressions
-VERIFY_MAX_TOKENS = 16000        # Task 3: Verify findings
-
-# Response truncation detection
-TRUNCATION_WARNING_THRESHOLD = 0.95  # Warn if response uses >95% of max_tokens
-
-# Retry configuration
-MAX_RETRIES = 3
-RETRY_DELAY = 1.0  # seconds
-RETRY_BACKOFF = 2.0  # exponential backoff multiplier
-
-# Timeout configuration
-LLM_TIMEOUT = 300  # seconds (5 minutes) - timeout for LLM API calls
-CONNECT_TIMEOUT = 10  # seconds - timeout for initial connection
-
-# Debug options
-DEBUG_DUMP_DIR = "debug_dumps"  # Directory for prompt/response dumps

@@ -1,0 +1,30 @@
+{
+  "_comment": "Configuration file for kernel-review-agent",
+  "_comment2": "System-wide: /etc/kernel-review-agent/config.json",
+  "_comment3": "User-specific: ~/.config/kernel-review-agent/config.json",
+  "_comment4": "User config overrides system config",
+
+  "DEFAULT_HOST": "localhost",
+  "DEFAULT_PORT": 8080,
+  "DEFAULT_API_KEY": "dummy",
+  "DEFAULT_MODEL": "gpt-4",
+
+  "DEFAULT_MAX_TOKENS": 16000,
+  "DEFAULT_TEMPERATURE": 0.1,
+
+  "CATEGORIZE_MAX_TOKENS": 8000,
+  "ANALYZE_MAX_TOKENS": 16000,
+  "VERIFY_MAX_TOKENS": 16000,
+
+  "TRUNCATION_WARNING_THRESHOLD": 0.95,
+
+  "MAX_RETRIES": 3,
+  "RETRY_DELAY": 1.0,
+  "RETRY_BACKOFF": 2.0,
+
+  "LLM_TIMEOUT": 300,
+  "CONNECT_TIMEOUT": 10,
+
+  "DEFAULT_OUTPUT_DIR": ".",
+  "DEBUG_DUMP_DIR": "debug_dumps"
+}

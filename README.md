@@ -384,33 +384,72 @@ jq -r 'select(."issue-severity-score" == "high") | .sha' \
 
 ## Configuration
 
-Edit `config.py` to change defaults:
+The agent can be configured using JSON configuration files. Configuration is loaded in this order (later values override earlier ones):
 
-```python
-# LLM API defaults (for OpenAI-compatible providers)
-DEFAULT_HOST = "localhost"
-DEFAULT_PORT = 8080
-DEFAULT_MODEL = "gpt-4"
-DEFAULT_API_KEY = "dummy"  # Most local servers don't require real keys
+1. **Hardcoded defaults** (in `config.py`)
+2. **System-wide config**: `/etc/kernel-review-agent/config.json`
+3. **User config**: `~/.config/kernel-review-agent/config.json`
+4. **Command-line arguments** (highest priority)
 
-# LLM parameters
-DEFAULT_MAX_TOKENS = 16000  # Increased for complex kernel reviews
-DEFAULT_TEMPERATURE = 0.1
+### Quick Start - User Configuration
 
-# Task-specific token limits
-CATEGORIZE_MAX_TOKENS = 8000    # Task 1: Categorize changes
-ANALYZE_MAX_TOKENS = 16000       # Task 2: Analyze for regressions
-VERIFY_MAX_TOKENS = 16000        # Task 3: Verify findings
+Create a user config file:
 
-# Retry configuration
-MAX_RETRIES = 3
-RETRY_DELAY = 1.0
-RETRY_BACKOFF = 2.0
-
-# Timeout configuration
-LLM_TIMEOUT = 300  # seconds (5 minutes) - timeout for LLM API calls
-CONNECT_TIMEOUT = 10  # seconds - timeout for initial connection
+```bash
+mkdir -p ~/.config/kernel-review-agent
+cat > ~/.config/kernel-review-agent/config.json <<'EOF'
+{
+  "DEFAULT_HOST": "localhost",
+  "DEFAULT_PORT": 11434,
+  "DEFAULT_MODEL": "llama3.1",
+  "LLM_TIMEOUT": 600
+}
+EOF
 ```
+
+### Quick Start - System-Wide Configuration
+
+Set defaults for all users:
+
+```bash
+sudo mkdir -p /etc/kernel-review-agent
+sudo tee /etc/kernel-review-agent/config.json <<'EOF'
+{
+  "DEFAULT_HOST": "llm-server.company.local",
+  "DEFAULT_PORT": 8080,
+  "DEFAULT_MODEL": "gpt-4",
+  "LLM_TIMEOUT": 300
+}
+EOF
+```
+
+### Available Configuration Options
+
+All options are optional. See `config.json.example` for a complete template.
+
+**LLM Settings:**
+- `DEFAULT_HOST`: LLM server hostname (default: `"localhost"`)
+- `DEFAULT_PORT`: LLM server port (default: `8080`)
+- `DEFAULT_MODEL`: Model name (default: `"gpt-4"`)
+- `DEFAULT_API_KEY`: API key (default: `"dummy"`)
+
+**Token Limits:**
+- `DEFAULT_MAX_TOKENS`: General token limit (default: `16000`)
+- `CATEGORIZE_MAX_TOKENS`: Categorization tokens (default: `8000`)
+- `ANALYZE_MAX_TOKENS`: Analysis tokens (default: `16000`)
+- `VERIFY_MAX_TOKENS`: Verification tokens (default: `16000`)
+
+**Timeouts:**
+- `LLM_TIMEOUT`: Request timeout in seconds (default: `300`)
+- `CONNECT_TIMEOUT`: Connection timeout in seconds (default: `10`)
+
+**Other:**
+- `DEFAULT_TEMPERATURE`: Sampling temperature (default: `0.1`)
+- `MAX_RETRIES`: Number of retries (default: `3`)
+- `RETRY_DELAY`: Initial retry delay in seconds (default: `1.0`)
+- `RETRY_BACKOFF`: Exponential backoff multiplier (default: `2.0`)
+
+See [CONFIGURATION.md](CONFIGURATION.md) for complete documentation.
 
 **Timeout Configuration:**
 - `LLM_TIMEOUT`: Maximum time to wait for LLM response (default: 300s / 5 minutes)
