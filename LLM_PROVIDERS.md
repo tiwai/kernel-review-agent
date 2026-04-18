@@ -123,25 +123,47 @@ pip install google-cloud-aiplatform
 ```
 
 **Setup**:
+
+**Option 1: User authentication (development)**
 ```bash
-# Authenticate with Google Cloud
+# Authenticate with your Google account
 gcloud auth application-default login
 
 # Set your project ID
 export GOOGLE_CLOUD_PROJECT=your-project-id
 
-# Ensure Vertex AI API is enabled in your GCP project
+# Ensure Vertex AI API is enabled
 gcloud services enable aiplatform.googleapis.com
+```
+
+**Option 2: Service account (production/CI)**
+```bash
+# Create service account and download key
+gcloud iam service-accounts create kernel-review-agent
+gcloud iam service-accounts keys create key.json \
+    --iam-account=kernel-review-agent@PROJECT_ID.iam.gserviceaccount.com
+
+# Grant necessary permissions
+gcloud projects add-iam-policy-binding PROJECT_ID \
+    --member="serviceAccount:kernel-review-agent@PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/aiplatform.user"
+
+# Set credentials file
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
+export GOOGLE_CLOUD_PROJECT=your-project-id
 ```
 
 **Usage**:
 ```bash
-# Using environment variable for project ID
+# Method 1: Using environment variables
+export GOOGLE_CLOUD_PROJECT=your-project-id
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json  # Optional
 kernel_review_agent.py HEAD --provider google --model gemini-1.5-pro
 
-# Passing project ID and location directly
+# Method 2: Passing credentials via command line
 kernel_review_agent.py HEAD --provider google \
     --google-project your-project-id \
+    --google-credentials /path/to/key.json \
     --google-location us-central1 \
     --model gemini-1.5-pro
 ```
@@ -172,8 +194,10 @@ pip install 'anthropic[vertex]'
 ```
 
 **Setup**:
+
+**Option 1: User authentication (development)**
 ```bash
-# Authenticate with Google Cloud
+# Authenticate with your Google account
 gcloud auth application-default login
 
 # Set your project ID
@@ -183,14 +207,34 @@ export GOOGLE_CLOUD_PROJECT=your-project-id
 gcloud services enable aiplatform.googleapis.com
 ```
 
+**Option 2: Service account (production/CI)**
+```bash
+# Create service account and download key
+gcloud iam service-accounts create kernel-review-agent
+gcloud iam service-accounts keys create key.json \
+    --iam-account=kernel-review-agent@PROJECT_ID.iam.gserviceaccount.com
+
+# Grant necessary permissions for Claude on Vertex
+gcloud projects add-iam-policy-binding PROJECT_ID \
+    --member="serviceAccount:kernel-review-agent@PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/aiplatform.user"
+
+# Set credentials file
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
+export GOOGLE_CLOUD_PROJECT=your-project-id
+```
+
 **Usage**:
 ```bash
-# Using environment variable for project ID
+# Method 1: Using environment variables
+export GOOGLE_CLOUD_PROJECT=your-project-id
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json  # Optional
 kernel_review_agent.py HEAD --provider anthropic-vertex --model claude-3-5-sonnet@20241022
 
-# Passing project ID and location directly
+# Method 2: Passing credentials via command line
 kernel_review_agent.py HEAD --provider anthropic-vertex \
     --google-project your-project-id \
+    --google-credentials /path/to/key.json \
     --google-location us-east5 \
     --model claude-3-5-sonnet@20241022
 ```
@@ -198,6 +242,7 @@ kernel_review_agent.py HEAD --provider anthropic-vertex \
 **Configuration**:
 - `--google-project`: GCP project ID (or set `GOOGLE_CLOUD_PROJECT` env var)
 - `--google-location`: GCP region (default: us-east5 for Claude)
+- `--google-credentials`: Path to service account key JSON file (or set `GOOGLE_APPLICATION_CREDENTIALS` env var)
 - `--model`: Model name
 
 **Available models**:
@@ -300,12 +345,16 @@ kernel_review_agent.py HEAD --provider ollama --model llama3.1
 ### Ollama
 - None required (uses default localhost:11434)
 
-### Anthropic
+### Anthropic (Direct API)
 - `ANTHROPIC_API_KEY` - Your Anthropic API key
 
-### Google Vertex AI
+### Claude on Vertex AI
 - `GOOGLE_CLOUD_PROJECT` - Your GCP project ID
-- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account key (optional)
+- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account key JSON file (optional, required for service account auth)
+
+### Google Vertex AI (Gemini)
+- `GOOGLE_CLOUD_PROJECT` - Your GCP project ID
+- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account key JSON file (optional, required for service account auth)
 
 ---
 
@@ -349,13 +398,22 @@ curl https://api.anthropic.com/v1/messages \
   -H "anthropic-version: 2023-06-01"
 ```
 
-**Google**:
+**Google (Vertex AI - Gemini or Claude)**:
 ```bash
 # Check authentication
 gcloud auth application-default print-access-token
 
 # Verify project
 echo $GOOGLE_CLOUD_PROJECT
+
+# If using service account, verify credentials file
+echo $GOOGLE_APPLICATION_CREDENTIALS
+ls -l $GOOGLE_APPLICATION_CREDENTIALS
+
+# Or pass credentials file via command line
+kernel_review_agent.py HEAD --provider google \
+    --google-credentials /path/to/key.json \
+    --google-project your-project-id
 ```
 
 ### Timeout errors

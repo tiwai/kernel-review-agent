@@ -125,14 +125,21 @@ python kernel_review_agent.py HEAD --provider anthropic --anthropic-api-key your
 
 #### Claude on Google Vertex AI
 ```bash
-# Set project ID via environment variable
+# Method 1: Using gcloud authentication (recommended for development)
+gcloud auth application-default login
 export GOOGLE_CLOUD_PROJECT=your-project-id
 python kernel_review_agent.py HEAD --provider anthropic-vertex --model claude-3-5-sonnet@20241022
 
-# Or pass project ID and location directly
+# Method 2: Using service account key file (recommended for production/CI)
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+export GOOGLE_CLOUD_PROJECT=your-project-id
+python kernel_review_agent.py HEAD --provider anthropic-vertex --model claude-3-5-sonnet@20241022
+
+# Method 3: Pass credentials file via command line
 python kernel_review_agent.py HEAD --provider anthropic-vertex \
     --google-project your-project-id \
     --google-location us-east5 \
+    --google-credentials /path/to/service-account-key.json \
     --model claude-3-5-sonnet@20241022
 ```
 
@@ -140,12 +147,27 @@ python kernel_review_agent.py HEAD --provider anthropic-vertex \
 
 #### Google Vertex AI (Gemini)
 ```bash
-# Set project ID via environment variable
+# Method 1: Using gcloud authentication (recommended for development)
+gcloud auth application-default login
 export GOOGLE_CLOUD_PROJECT=your-project-id
 python kernel_review_agent.py HEAD --provider google --model gemini-1.5-pro
 
-# Or pass project ID and location directly
-python kernel_review_agent.py HEAD --provider google --google-project your-project-id --google-location us-central1
+# Method 2: Using service account key file (recommended for production/CI)
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+export GOOGLE_CLOUD_PROJECT=your-project-id
+python kernel_review_agent.py HEAD --provider google --model gemini-1.5-pro
+
+# Method 3: Pass credentials file via command line
+python kernel_review_agent.py HEAD --provider google \
+    --google-project your-project-id \
+    --google-credentials /path/to/service-account-key.json \
+    --model gemini-1.5-pro
+
+# Or specify all parameters explicitly
+python kernel_review_agent.py HEAD --provider google \
+    --google-project your-project-id \
+    --google-location us-central1 \
+    --google-credentials /path/to/key.json
 ```
 
 ### Upstream Comparison

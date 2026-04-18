@@ -93,6 +93,11 @@ Examples:
     )
 
     parser.add_argument(
+        "--google-credentials",
+        help="Path to Google Cloud service account JSON key file (or set GOOGLE_APPLICATION_CREDENTIALS env var)"
+    )
+
+    parser.add_argument(
         "--upstream-branch",
         help="Compare with upstream branch (e.g., upstream, origin/master)"
     )
@@ -157,6 +162,12 @@ Examples:
         if args.upstream_branch:
             print(f"[DEBUG]   Upstream branch: {args.upstream_branch}")
         print()
+
+    # Set Google credentials if specified
+    if hasattr(args, 'google_credentials') and args.google_credentials:
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = args.google_credentials
+        if args.debug:
+            print(f"[DEBUG]   Google credentials file: {args.google_credentials}")
 
     # Determine provider
     provider = get_provider_from_args(args)
