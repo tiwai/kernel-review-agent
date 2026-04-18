@@ -522,13 +522,18 @@ The LLM took too long to respond. Solutions:
 
 ## License
 
-The kernel review prompts in the `prompts/` directory are licensed under the MIT License.
-These prompts are maintained by Chris Mason in the review-prompts repository:
-https://github.com/masoncl/review-prompts
+This project contains two separate MIT-licensed components:
 
-See the LICENSE file for the full MIT license text.
+**Agent Code** (Python modules and scripts):
+- Licensed under the MIT License
+- Copyright (c) 2026 Takashi Iwai
+- See `LICENSE` file for full license text
 
-The agent code (Python modules) is provided as-is for Linux kernel development and review purposes.
+**Review Prompts** (`prompts/` directory):
+- Licensed under the MIT License
+- Copyright (c) 2024 Chris Mason
+- Maintained in the [review-prompts](https://github.com/masoncl/review-prompts) repository
+- See `LICENSE-PROMPTS` file for full license text
 
 ## Credits
 

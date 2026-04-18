@@ -50,7 +50,10 @@ setup(
             'QUICKSTART.md',
             'DEBUG_GUIDE.md',
             'LLM_PROVIDERS.md',
+            'CONFIGURATION.md',
             'LICENSE',
+            'LICENSE-PROMPTS',
+            'config.json.example',
         ]),
     ],
     classifiers=[
