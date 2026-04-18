@@ -10,6 +10,35 @@ import argparse
 import sys
 import os
 
+# Add module directory to Python path for system-wide installation
+# This allows the script to find modules when installed in /usr/bin
+# while modules are in /usr/share/kernel-review-agent or /usr/local/share/kernel-review-agent
+def setup_module_path():
+    """Add module directories to sys.path for system-wide installation."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Check if modules are in the same directory (development/local install)
+    if os.path.isfile(os.path.join(script_dir, 'config.py')):
+        # Already in the right place, no need to modify path
+        return
+
+    # Check system-wide installation paths
+    possible_paths = [
+        '/usr/share/kernel-review-agent',
+        '/usr/local/share/kernel-review-agent',
+        os.path.expanduser('~/.local/share/kernel-review-agent'),
+    ]
+
+    for path in possible_paths:
+        if os.path.isfile(os.path.join(path, 'config.py')):
+            sys.path.insert(0, path)
+            return
+
+    # If we get here, modules are not found
+    # Let the import fail naturally with a clear error
+
+setup_module_path()
+
 import config
 from git_integration import CommitExtractor
 from llm_integration import create_llm_client, get_provider_from_args

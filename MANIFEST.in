@@ -1,0 +1,13 @@
+include README.md
+include QUICKSTART.md
+include DEBUG_GUIDE.md
+include LLM_PROVIDERS.md
+include LICENSE
+include requirements.txt
+include kernel_review_agent.py
+recursive-include prompts *.md
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude .git*
+global-exclude test_*
+global-exclude debug_dumps

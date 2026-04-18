@@ -13,40 +13,56 @@ AI-powered agent for automated review of Linux kernel git commits. This agent an
 
 ## Installation
 
+Multiple installation methods are available. See [INSTALL.md](INSTALL.md) for complete details.
+
+### Quick Install (System-Wide)
+
 ```bash
-# Clone or copy the repository
 git clone <repository-url> /path/to/kernel-review-agent
 cd /path/to/kernel-review-agent
-
-# Install core dependencies (OpenAI-compatible and Ollama support)
-pip install -r requirements.txt
-
-# Optional: Install Anthropic Claude API support (direct)
-pip install anthropic
-
-# Optional: Install Claude on Google Vertex AI support
-pip install 'anthropic[vertex]'
-
-# Optional: Install Google Vertex AI support (Gemini)
-pip install google-cloud-aiplatform
-
-# Verify installation
-python kernel_review_agent.py --help
+pip install -r requirements.txt  # Install Python dependencies
+sudo make install PREFIX=/usr    # Install to /usr/bin
 ```
 
-### Running from Anywhere
+After installation:
+```bash
+kernel-review-agent HEAD --verbose  # Works from anywhere!
+```
 
-The agent can be run from any directory - it automatically finds its prompts and configuration files relative to the installation directory:
+### Quick Install (User)
+
+No root required:
+```bash
+git clone <repository-url> /path/to/kernel-review-agent
+cd /path/to/kernel-review-agent
+pip install -r requirements.txt
+make install PREFIX=~/.local
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### Development / Local Use
+
+Run directly without installation:
+```bash
+cd /path/to/kernel-review-agent
+pip install -r requirements.txt
+python kernel_review_agent.py HEAD --verbose
+```
+
+### Optional Provider Dependencies
 
 ```bash
-# Run from any directory
-cd /path/to/linux-kernel
-python /path/to/kernel-review-agent/kernel_review_agent.py HEAD
+# For Anthropic Claude API (direct)
+pip install anthropic
 
-# Or add to PATH
-export PATH="/path/to/kernel-review-agent:$PATH"
-kernel_review_agent.py HEAD
+# For Claude on Google Vertex AI
+pip install 'anthropic[vertex]'
+
+# For Google Vertex AI (Gemini)
+pip install google-cloud-aiplatform
 ```
+
+See [INSTALL.md](INSTALL.md) for all installation methods (system-wide, user, pip, development).
 
 ### Custom Prompts Directory
 
