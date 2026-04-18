@@ -10,7 +10,7 @@ A complete AI-powered agent for reviewing Linux kernel commits has been implemen
 
 1. **kernel_review_agent.py** (executable)
    - Main CLI entry point
-   - Argument parsing (commit, host, port, upstream-branch, output-dir, verbose)
+   - Argument parsing (commit, host, port, output-dir, verbose, debug, etc.)
    - Orchestrates all components
    - Handles single commits and ranges
    - Output files: `review-inline-<sha>.txt` and `review-metadata-<sha>.json`
@@ -28,7 +28,6 @@ A complete AI-powered agent for reviewing Linux kernel commits has been implemen
 - **commit_extractor.py**: Extract commits, diffs, metadata from git
   - `get_commit()`: Extract single commit with metadata
   - `expand_range()`: Convert ranges to commit list
-  - `get_diff_from_upstream()`: Compare with upstream branch
   - Uses subprocess for git commands
 
 #### llm_integration/
@@ -173,9 +172,6 @@ python kernel_review_agent.py HEAD
 
 # Review range
 python kernel_review_agent.py HEAD~10..HEAD --verbose
-
-# Compare with upstream
-python kernel_review_agent.py abc123 --upstream-branch upstream
 
 # Custom LLM server
 python kernel_review_agent.py HEAD --host 192.168.1.100 --port 11434

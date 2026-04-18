@@ -124,11 +124,6 @@ cat review-metadata-abc123def456.json
 kernel_review_agent.py HEAD~5..HEAD --output-dir ./reviews/ --verbose
 ```
 
-### Compare with Upstream
-```bash
-kernel_review_agent.py HEAD --upstream-branch upstream --verbose
-```
-
 ### Review Specific Commit Range
 ```bash
 kernel_review_agent.py v6.8..v6.9 --output-dir ./v6.9-reviews/

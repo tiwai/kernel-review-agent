@@ -116,6 +116,10 @@ def load_configuration():
 
         # Debug options
         'DEBUG_DUMP_DIR': 'debug_dumps',
+
+        # SUSE kernel-source repository paths
+        'SUSE_KERNEL_SOURCE_REPO': None,  # Path to SUSE kernel-source git repo
+        'UPSTREAM_LINUX_REPO': None,      # Path to upstream Linux kernel repo (optional)
     }
 
     # Load system-wide config
@@ -167,6 +171,5 @@ LLM_TIMEOUT = _config['LLM_TIMEOUT']
 CONNECT_TIMEOUT = _config['CONNECT_TIMEOUT']
 DEFAULT_OUTPUT_DIR = _config['DEFAULT_OUTPUT_DIR']
 DEBUG_DUMP_DIR = _config['DEBUG_DUMP_DIR']
-
-# Git defaults (not configurable via JSON yet, but could be added)
-DEFAULT_UPSTREAM_BRANCH = None
+SUSE_KERNEL_SOURCE_REPO = _config['SUSE_KERNEL_SOURCE_REPO']
+UPSTREAM_LINUX_REPO = _config['UPSTREAM_LINUX_REPO']

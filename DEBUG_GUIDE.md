@@ -25,7 +25,6 @@ The `--debug` flag provides detailed information throughout the review process:
 [DEBUG]   Dump prompts: True
 [DEBUG]   Dump directory: debug_dumps
 [DEBUG]   Output directory: .
-[DEBUG]   Upstream branch: upstream
 ```
 
 #### Task 0: Context Management

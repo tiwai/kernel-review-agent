@@ -16,6 +16,9 @@ class Commit:
     message: str
     diff: str
     files: List[str]
+    # SUSE integration fields
+    suse_commit: Optional[str] = None       # Extracted from suse-commit: tag
+    upstream_commit: Optional[str] = None   # Extracted from Git-commit: tag in SUSE repo
 
 
 class CommitExtractor:
@@ -45,6 +48,31 @@ class CommitExtractor:
         except RuntimeError:
             return False
 
+    def extract_tag(self, message: str, tag_name: str) -> Optional[str]:
+        """
+        Extract tag value from commit message.
+
+        Looks for patterns like:
+            suse-commit: abc123def456...
+            Git-commit: def456abc123...
+
+        Args:
+            message: Commit message text
+            tag_name: Tag name to search for (e.g., 'suse-commit', 'Git-commit')
+
+        Returns:
+            Tag value (commit SHA) or None if not found
+        """
+        # Match tag with optional whitespace: "suse-commit: <sha>" or "suse-commit:<sha>"
+        pattern = rf'^{re.escape(tag_name)}:\s*([0-9a-fA-F]+)'
+
+        for line in message.split('\n'):
+            match = re.match(pattern, line.strip(), re.IGNORECASE)
+            if match:
+                return match.group(1)
+
+        return None
+
     def expand_range(self, range_spec: str) -> List[str]:
         """
         Convert git range to list of commit SHAs.
@@ -66,13 +94,12 @@ class CommitExtractor:
 
         return commits
 
-    def get_commit(self, ref: str, upstream_branch: Optional[str] = None) -> Commit:
+    def get_commit(self, ref: str) -> Commit:
         """
         Extract commit metadata and diff.
 
         Args:
             ref: Git reference (SHA, HEAD, etc.)
-            upstream_branch: If provided, compare with upstream branch
 
         Returns:
             Commit object with metadata and diff
@@ -100,15 +127,13 @@ class CommitExtractor:
         message = message_match.group(1).strip() if message_match else ""
 
         # Get diff
-        if upstream_branch:
-            # Compare with upstream branch
-            diff = self.get_diff_from_upstream(sha, upstream_branch)
-        else:
-            # Standard commit diff
-            diff = self._run_git(['show', '--format=', sha])
+        diff = self._run_git(['show', '--format=', sha])
 
         # Extract changed files from diff
         files = self._extract_files_from_diff(diff)
+
+        # Extract SUSE tags if present
+        suse_commit_sha = self.extract_tag(message, 'suse-commit')
 
         return Commit(
             sha=sha,
@@ -117,19 +142,10 @@ class CommitExtractor:
             subject=subject,
             message=message,
             diff=diff,
-            files=files
+            files=files,
+            suse_commit=suse_commit_sha,
+            upstream_commit=None  # Will be populated later if needed
         )
-
-    def get_diff_from_upstream(self, ref: str, upstream_branch: str) -> str:
-        """Get diff comparing ref with upstream branch."""
-        try:
-            # Use three-dot diff to show changes in ref not in upstream
-            return self._run_git(['diff', f'{upstream_branch}...{ref}'])
-        except RuntimeError as e:
-            if self.verbose:
-                print(f"Warning: Could not compare with upstream: {e}")
-            # Fall back to regular diff
-            return self._run_git(['show', '--format=', ref])
 
     def _extract_files_from_diff(self, diff: str) -> List[str]:
         """Extract list of changed files from unified diff."""
@@ -140,3 +156,112 @@ class CommitExtractor:
             if match:
                 files.append(match.group(1))
         return files
+
+
+class MultiRepoExtractor:
+    """Handle git operations across multiple repositories."""
+
+    def __init__(self, repo_path: str, verbose: bool = False):
+        """
+        Initialize multi-repo extractor.
+
+        Args:
+            repo_path: Absolute path to git repository
+            verbose: Enable verbose output
+        """
+        self.repo_path = repo_path
+        self.verbose = verbose
+        self.extractor = CommitExtractor(verbose=verbose)
+
+    def is_available(self) -> bool:
+        """Check if repository path exists and is a git repo."""
+        import os
+        if not self.repo_path or not os.path.exists(self.repo_path):
+            return False
+
+        try:
+            result = subprocess.run(
+                ['git', '-C', self.repo_path, 'rev-parse', '--git-dir'],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
+
+    def get_commit(self, commit_sha: str) -> Optional[Commit]:
+        """
+        Get commit from this repository.
+
+        Args:
+            commit_sha: Commit SHA to fetch
+
+        Returns:
+            Commit object or None if not found
+        """
+        if not self.is_available():
+            return None
+
+        try:
+            # Run git show with -C to specify repository
+            result = subprocess.run(
+                ['git', '-C', self.repo_path, 'show', '--format=fuller', '--no-patch', commit_sha],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            output = result.stdout
+
+            # Get full SHA
+            sha_result = subprocess.run(
+                ['git', '-C', self.repo_path, 'rev-parse', commit_sha],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            sha = sha_result.stdout.strip()
+
+            # Parse using existing logic
+            author_match = re.search(r'^Author:\s+(.+)$', output, re.MULTILINE)
+            author = author_match.group(1).strip() if author_match else "Unknown"
+
+            date_match = re.search(r'^AuthorDate:\s+(.+)$', output, re.MULTILINE)
+            date = date_match.group(1).strip() if date_match else "Unknown"
+
+            subject_match = re.search(r'\n\n\s*(.+)$', output, re.MULTILINE)
+            subject = subject_match.group(1).strip() if subject_match else "No subject"
+
+            message_match = re.search(r'\n\n(.*)', output, re.DOTALL)
+            message = message_match.group(1).strip() if message_match else ""
+
+            # Get diff
+            diff_result = subprocess.run(
+                ['git', '-C', self.repo_path, 'show', '--format=', sha],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            diff = diff_result.stdout
+
+            # Extract files
+            files = self.extractor._extract_files_from_diff(diff)
+
+            # Extract tags (both suse-commit and Git-commit)
+            suse_commit = self.extractor.extract_tag(message, 'suse-commit')
+            git_commit = self.extractor.extract_tag(message, 'Git-commit')
+
+            return Commit(
+                sha=sha,
+                author=author,
+                date=date,
+                subject=subject,
+                message=message,
+                diff=diff,
+                files=files,
+                suse_commit=suse_commit,
+                upstream_commit=git_commit  # Git-commit tag from SUSE repo
+            )
+
+        except subprocess.CalledProcessError:
+            return None

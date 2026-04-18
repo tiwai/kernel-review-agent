@@ -190,14 +190,6 @@ python kernel_review_agent.py HEAD --provider google \
     --google-credentials /path/to/key.json
 ```
 
-### Upstream Comparison
-
-```bash
-# Compare with upstream branch to identify downstream-specific changes
-python kernel_review_agent.py abc123 --upstream-branch upstream
-python kernel_review_agent.py HEAD --upstream-branch origin/master
-```
-
 ### Output Options
 
 ```bash
@@ -374,8 +366,7 @@ BASE="upstream"
 python kernel_review_agent.py "$BASE..$BRANCH" \
     --host localhost \
     --port 11434 \
-    --output-dir "./reviews/$BRANCH" \
-    --upstream-branch "$BASE"
+    --output-dir "./reviews/$BRANCH"
 
 # Check for high-severity issues
 jq -r 'select(."issue-severity-score" == "high") | .sha' \

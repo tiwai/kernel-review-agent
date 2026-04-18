@@ -60,9 +60,6 @@ Examples:
   # Review commit range
   %(prog)s HEAD~5..HEAD --host localhost --port 8080
 
-  # Compare with upstream branch
-  %(prog)s abc123def --upstream-branch upstream
-
   # Save to custom directory
   %(prog)s abc123def --output-dir ./reviews/
         """
@@ -127,11 +124,6 @@ Examples:
     )
 
     parser.add_argument(
-        "--upstream-branch",
-        help="Compare with upstream branch (e.g., upstream, origin/master)"
-    )
-
-    parser.add_argument(
         "--output-dir",
         default=config.DEFAULT_OUTPUT_DIR,
         help=f"Output directory for reports (default: {config.DEFAULT_OUTPUT_DIR})"
@@ -173,6 +165,16 @@ Examples:
         help=f"Directory containing review prompts (default: {config.DEFAULT_PROMPTS_DIR})"
     )
 
+    parser.add_argument(
+        "--suse-kernel-source",
+        help="Path to SUSE kernel-source git repository (enables SUSE upstream verification)"
+    )
+
+    parser.add_argument(
+        "--upstream-linux",
+        help="Path to upstream Linux kernel git repository (optional, for SUSE verification)"
+    )
+
     args = parser.parse_args()
 
     # Check if in git repository
@@ -195,8 +197,6 @@ Examples:
             print(f"[DEBUG]   Dump directory: {args.dump_dir}")
         print(f"[DEBUG]   Skip verification: {args.skip_verification}")
         print(f"[DEBUG]   Output directory: {args.output_dir}")
-        if args.upstream_branch:
-            print(f"[DEBUG]   Upstream branch: {args.upstream_branch}")
         print()
 
     # Set Google credentials if specified
@@ -267,13 +267,41 @@ Examples:
         return 1
 
     matcher = SubsystemMatcher()
+
+    # Initialize SUSE verifier if configured
+    suse_verifier = None
+    suse_kernel_source = args.suse_kernel_source or config.SUSE_KERNEL_SOURCE_REPO
+    upstream_linux = args.upstream_linux or config.UPSTREAM_LINUX_REPO
+
+    if suse_kernel_source:
+        if args.debug:
+            print(f"[DEBUG] Initializing SUSE verifier")
+            print(f"[DEBUG]   kernel-source: {suse_kernel_source}")
+            print(f"[DEBUG]   upstream: {upstream_linux}")
+
+        from analysis import SuseUpstreamVerifier
+        suse_verifier = SuseUpstreamVerifier(
+            kernel_source_repo=suse_kernel_source,
+            upstream_repo=upstream_linux,
+            verbose=args.verbose,
+            debug=args.debug
+        )
+
+        if not suse_verifier.is_enabled():
+            print(f"Warning: SUSE kernel-source repository not available: {suse_kernel_source}",
+                  file=sys.stderr)
+            suse_verifier = None
+        elif args.verbose:
+            print(f"SUSE upstream verification enabled")
+
     workflow = ReviewWorkflow(
         llm,
         prompts,
         matcher,
         verbose=args.verbose,
         debug=args.debug,
-        skip_verification=args.skip_verification
+        skip_verification=args.skip_verification,
+        suse_verifier=suse_verifier
     )
     formatter = ReportFormatter()
     metadata_gen = MetadataGenerator()
@@ -298,7 +326,7 @@ Examples:
     for i, commit_ref in enumerate(commits, 1):
         try:
             # Extract commit
-            commit = git.get_commit(commit_ref, upstream_branch=args.upstream_branch)
+            commit = git.get_commit(commit_ref)
 
             # Skip merge commits (too complex)
             if len(commit.diff.split('\n')) < 5 or "Merge:" in commit.message:
@@ -314,6 +342,37 @@ Examples:
             # Execute review
             result = workflow.execute_review(commit)
 
+            # Save pre-verification findings if SUSE verification was done
+            sha_short = commit.sha[:12]
+            output_dir = args.output_dir
+
+            # Create output directory if it doesn't exist
+            if output_dir != "." and not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
+            if result.suse_verification:
+                pre_verification_findings = (
+                    result.suse_verification.get('findings_in_upstream', []) +
+                    result.suse_verification.get('findings_only_downstream', [])
+                )
+
+                if pre_verification_findings:
+                    pre_verification_metadata = metadata_gen.generate_pre_verification_metadata(
+                        commit,
+                        pre_verification_findings,
+                        result.suse_verification
+                    )
+
+                    pre_verify_path = os.path.join(
+                        output_dir,
+                        f"review-pre-verification-{sha_short}.json"
+                    )
+
+                    metadata_gen.save_json(pre_verification_metadata, pre_verify_path)
+
+                    if args.verbose:
+                        print(f"  Pre-verification findings saved: {pre_verify_path}")
+
             # Generate outputs
             report_text = formatter.format_report(
                 commit,
@@ -321,14 +380,6 @@ Examples:
                 summary=result.summary
             )
             metadata = metadata_gen.generate(commit, result.findings)
-
-            # Save outputs with commit SHA suffix to avoid overwriting
-            sha_short = commit.sha[:12]
-            output_dir = args.output_dir
-
-            # Create output directory if it doesn't exist
-            if output_dir != "." and not os.path.exists(output_dir):
-                os.makedirs(output_dir)
 
             report_path = os.path.join(output_dir, f"review-inline-{sha_short}.txt")
             metadata_path = os.path.join(output_dir, f"review-metadata-{sha_short}.json")
