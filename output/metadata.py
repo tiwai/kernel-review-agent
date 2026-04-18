@@ -28,7 +28,7 @@ class MetadataGenerator:
         # Calculate severity based on findings
         severity, explanation = self._calculate_severity(findings, issues_found)
 
-        return {
+        metadata = {
             "author": commit.author,
             "sha": commit.sha,
             "subject": commit.subject,
@@ -36,6 +36,15 @@ class MetadataGenerator:
             "issue-severity-score": severity,
             "issue-severity-explanation": explanation
         }
+
+        # Include SUSE commit IDs if present
+        if commit.suse_commit:
+            metadata["suse-commit"] = commit.suse_commit
+
+        if commit.upstream_commit:
+            metadata["upstream-commit"] = commit.upstream_commit
+
+        return metadata
 
     def generate_pre_verification_metadata(
         self,

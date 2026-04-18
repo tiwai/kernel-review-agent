@@ -59,17 +59,21 @@ class SuseUpstreamVerifier:
             True if verification should run
         """
         # Only verify if:
-        # 1. SUSE repos are configured
-        # 2. Commit has suse-commit tag
-        # 3. There are findings to verify
-        if not self.is_enabled():
-            return False
-
-        if not commit.suse_commit:
-            return False
+        # 1. Commit has suse-commit OR Git-commit tag
+        # 2. There are findings to verify
+        # Note: SUSE repos don't need to be configured if Git-commit is present directly
 
         if not findings or len(findings) == 0:
             return False
+
+        # Check if commit has either suse-commit or Git-commit tag
+        if not commit.suse_commit and not commit.upstream_commit:
+            return False
+
+        # If only suse-commit tag, need SUSE kernel-source repo
+        if commit.suse_commit and not commit.upstream_commit:
+            if not self.is_enabled():
+                return False
 
         return True
 
@@ -105,6 +109,7 @@ class SuseUpstreamVerifier:
         if self.debug:
             print(f"[DEBUG] SUSE verification starting for commit {downstream_commit.sha[:12]}")
             print(f"[DEBUG] suse-commit tag: {downstream_commit.suse_commit}")
+            print(f"[DEBUG] Git-commit tag (direct): {downstream_commit.upstream_commit}")
 
         result = {
             'suse_commit': None,
@@ -113,38 +118,53 @@ class SuseUpstreamVerifier:
             'findings_only_downstream': []
         }
 
-        # Step 1 & 2: Get SUSE kernel-source commit
-        if not self.kernel_source:
+        # Determine upstream commit SHA
+        upstream_sha = None
+
+        # Path 1: Direct Git-commit tag in downstream commit
+        if downstream_commit.upstream_commit:
+            upstream_sha = downstream_commit.upstream_commit
             if self.verbose:
-                print("[SUSE] kernel-source repository not configured, skipping")
-            return result
+                print(f"[SUSE] Using direct Git-commit tag: {upstream_sha[:12]}")
 
-        suse_commit = self.kernel_source.get_commit(downstream_commit.suse_commit)
-        if not suse_commit:
-            if self.verbose:
-                print(f"[SUSE] Warning: Could not fetch suse-commit {downstream_commit.suse_commit[:12]}")
-            return result
+        # Path 2: suse-commit tag → SUSE kernel-source → Git-commit tag
+        elif downstream_commit.suse_commit:
+            if not self.kernel_source:
+                if self.verbose:
+                    print("[SUSE] kernel-source repository not configured, skipping")
+                return result
 
-        result['suse_commit'] = suse_commit
+            suse_commit = self.kernel_source.get_commit(downstream_commit.suse_commit)
+            if not suse_commit:
+                if self.verbose:
+                    print(f"[SUSE] Warning: Could not fetch suse-commit {downstream_commit.suse_commit[:12]}")
+                return result
 
-        if self.debug:
-            print(f"[DEBUG] Found SUSE commit: {suse_commit.subject}")
-            print(f"[DEBUG] Git-commit tag: {suse_commit.upstream_commit}")
+            result['suse_commit'] = suse_commit
 
-        # Step 3: Extract Git-commit (upstream SHA)
-        if not suse_commit.upstream_commit:
-            if self.verbose:
-                print("[SUSE] No Git-commit tag found in SUSE commit")
-            # All findings are downstream-only
+            if self.debug:
+                print(f"[DEBUG] Found SUSE commit: {suse_commit.subject}")
+                print(f"[DEBUG] Git-commit tag from SUSE: {suse_commit.upstream_commit}")
+
+            if not suse_commit.upstream_commit:
+                if self.verbose:
+                    print("[SUSE] No Git-commit tag found in SUSE commit")
+                # All findings are downstream-only
+                result['findings_only_downstream'] = findings
+                return result
+
+            upstream_sha = suse_commit.upstream_commit
+
+        # No upstream SHA available
+        if not upstream_sha:
             result['findings_only_downstream'] = findings
             return result
 
-        # Step 4: Get upstream commit
-        # Try upstream repo first, fall back to current repo
+        # Fetch upstream commit
         upstream_commit = None
 
         if self.upstream and self.upstream.is_available():
-            upstream_commit = self.upstream.get_commit(suse_commit.upstream_commit)
+            upstream_commit = self.upstream.get_commit(upstream_sha)
             if self.debug and upstream_commit:
                 print(f"[DEBUG] Fetched upstream commit from upstream repo")
 
@@ -152,7 +172,7 @@ class SuseUpstreamVerifier:
         if not upstream_commit:
             try:
                 local_git = CommitExtractor(verbose=self.verbose)
-                upstream_commit = local_git.get_commit(suse_commit.upstream_commit)
+                upstream_commit = local_git.get_commit(upstream_sha)
                 if self.debug and upstream_commit:
                     print(f"[DEBUG] Fetched upstream commit from current repo")
             except Exception:
@@ -160,7 +180,7 @@ class SuseUpstreamVerifier:
 
         if not upstream_commit:
             if self.verbose:
-                print(f"[SUSE] Warning: Could not fetch upstream commit {suse_commit.upstream_commit[:12]}")
+                print(f"[SUSE] Warning: Could not fetch upstream commit {upstream_sha[:12]}")
             # Treat all findings as downstream-only
             result['findings_only_downstream'] = findings
             return result

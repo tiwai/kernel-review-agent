@@ -134,6 +134,7 @@ class CommitExtractor:
 
         # Extract SUSE tags if present
         suse_commit_sha = self.extract_tag(message, 'suse-commit')
+        git_commit_sha = self.extract_tag(message, 'Git-commit')
 
         return Commit(
             sha=sha,
@@ -144,7 +145,7 @@ class CommitExtractor:
             diff=diff,
             files=files,
             suse_commit=suse_commit_sha,
-            upstream_commit=None  # Will be populated later if needed
+            upstream_commit=git_commit_sha  # Direct Git-commit tag if present
         )
 
     def _extract_files_from_diff(self, diff: str) -> List[str]:

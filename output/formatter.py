@@ -48,6 +48,14 @@ class ReportFormatter:
         lines.append(commit.subject)
         lines.append("")
 
+        # SUSE commit information (if present)
+        if commit.suse_commit or commit.upstream_commit:
+            if commit.suse_commit:
+                lines.append(f"suse-commit: {commit.suse_commit}")
+            if commit.upstream_commit:
+                lines.append(f"Git-commit: {commit.upstream_commit}")
+            lines.append("")
+
         # Summary (if provided or generate default)
         if summary:
             wrapped_summary = self._wrap_text(summary)
