@@ -3,7 +3,11 @@
 ## Prerequisites
 
 1. **Python 3.8+** installed
-2. **OpenAI-compatible LLM server** running (e.g., llama.cpp, vLLM, Ollama)
+2. **LLM Provider** - choose one:
+   - **OpenAI-compatible server** (llama.cpp, vLLM, etc.)
+   - **Ollama** - easiest for local use
+   - **Anthropic Claude API** - requires API key
+   - **Google Vertex AI** - requires GCP project
 3. **Linux kernel git repository** 
 
 ## Installation
@@ -11,7 +15,13 @@
 ```bash
 # Clone or extract to your preferred location
 cd /path/to/kernel-review-agent
+
+# Install core dependencies
 pip install -r requirements.txt
+
+# Optional: Install provider-specific dependencies
+pip install anthropic                  # For Anthropic Claude API
+pip install google-cloud-aiplatform    # For Google Vertex AI
 
 # Optional: Add to PATH for convenience
 export PATH="/path/to/kernel-review-agent:$PATH"
@@ -20,19 +30,37 @@ export PATH="/path/to/kernel-review-agent:$PATH"
 export KREVIEW_HOME=/path/to/kernel-review-agent
 ```
 
-## Start Your LLM Server
+## Set Up Your LLM Provider
 
-Example with llama.cpp:
+### Option 1: Ollama (Easiest for local use)
 ```bash
-# Terminal 1: Start LLM server on port 8080
+# Install Ollama from https://ollama.com
+# Start Ollama server
+ollama serve
+
+# In another terminal, pull a model
+ollama pull llama3.1
+```
+
+### Option 2: llama.cpp (OpenAI-compatible)
+```bash
+# Start llama.cpp server on port 8080
 ./llama-server --model /path/to/model.gguf --port 8080 --host localhost
 ```
 
-Example with Ollama:
+### Option 3: Anthropic Claude API
 ```bash
-# Terminal 1: Start Ollama (default port 11434)
-ollama serve
-ollama run llama3
+# Set your API key
+export ANTHROPIC_API_KEY=your-api-key-here
+# Get your key from https://console.anthropic.com/
+```
+
+### Option 4: Google Vertex AI
+```bash
+# Set your project ID
+export GOOGLE_CLOUD_PROJECT=your-project-id
+# Authenticate
+gcloud auth application-default login
 ```
 
 ## Run Your First Review
@@ -41,14 +69,20 @@ ollama run llama3
 # Navigate to a Linux kernel git tree
 cd /path/to/linux-kernel
 
-# Review the most recent commit (if agent is in PATH)
-kernel_review_agent.py HEAD --host localhost --port 8080 --verbose
+# With Ollama (auto-detected on port 11434)
+kernel_review_agent.py HEAD --port 11434 --model llama3.1 --verbose
 
-# Or use full path
-python /path/to/kernel-review-agent/kernel_review_agent.py HEAD --host localhost --port 8080 --verbose
+# With llama.cpp / OpenAI-compatible server
+kernel_review_agent.py HEAD --host localhost --port 8080 --model gpt-4 --verbose
 
-# Or with KREVIEW_HOME set
-python $KREVIEW_HOME/kernel_review_agent.py HEAD --host localhost --port 8080 --verbose
+# With Anthropic Claude API
+kernel_review_agent.py HEAD --provider anthropic --model claude-3-5-sonnet-20241022 --verbose
+
+# With Google Vertex AI
+kernel_review_agent.py HEAD --provider google --model gemini-1.5-pro --verbose
+
+# Or use full path if not in PATH
+python /path/to/kernel-review-agent/kernel_review_agent.py HEAD --provider ollama --verbose
 ```
 
 Expected output:

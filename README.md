@@ -18,8 +18,14 @@ AI-powered agent for automated review of Linux kernel git commits. This agent an
 git clone <repository-url> /path/to/kernel-review-agent
 cd /path/to/kernel-review-agent
 
-# Install dependencies
+# Install core dependencies (OpenAI-compatible and Ollama support)
 pip install -r requirements.txt
+
+# Optional: Install Anthropic Claude API support
+pip install anthropic
+
+# Optional: Install Google Vertex AI support
+pip install google-cloud-aiplatform
 
 # Verify installation
 python kernel_review_agent.py --help
@@ -56,8 +62,11 @@ This is useful if:
 
 - **Python 3.8+**
 - **Git** (in PATH)
-- **OpenAI-compatible LLM server** running locally or remotely
-  - Example: llama.cpp server, vLLM, Ollama, etc.
+- **LLM Provider** - one of:
+  - **OpenAI-compatible** server (llama.cpp, vLLM, etc.) - uses `openai` package
+  - **Ollama** - local LLM server - uses `openai` package
+  - **Anthropic Claude API** - requires `anthropic` package and API key
+  - **Google Vertex AI** - requires `google-cloud-aiplatform` package and GCP project
 - **Linux kernel git tree** (run from within a kernel repository)
 
 ## Usage
@@ -78,14 +87,46 @@ python kernel_review_agent.py HEAD~5..HEAD
 python kernel_review_agent.py v6.8..v6.9
 ```
 
-### With Custom LLM Server
+### LLM Provider Options
 
+The agent supports multiple LLM providers:
+
+#### OpenAI-Compatible (llama.cpp, vLLM, etc.)
 ```bash
-# Connect to custom host/port
-python kernel_review_agent.py HEAD --host 192.168.1.100 --port 11434
+# Default - auto-detected for custom host/port
+python kernel_review_agent.py HEAD --host localhost --port 8080
 
-# Use specific model
-python kernel_review_agent.py HEAD --model gpt-4 --api-key your-key-here
+# Explicit provider selection
+python kernel_review_agent.py HEAD --provider openai --host localhost --port 8080 --model gpt-4
+```
+
+#### Ollama
+```bash
+# Auto-detected when using port 11434
+python kernel_review_agent.py HEAD --host localhost --port 11434 --model llama3.1
+
+# Explicit provider selection
+python kernel_review_agent.py HEAD --provider ollama --model llama3.1
+```
+
+#### Anthropic Claude API
+```bash
+# Set API key via environment variable
+export ANTHROPIC_API_KEY=your-api-key-here
+python kernel_review_agent.py HEAD --provider anthropic --model claude-3-5-sonnet-20241022
+
+# Or pass API key directly
+python kernel_review_agent.py HEAD --provider anthropic --anthropic-api-key your-key --model claude-3-5-sonnet-20241022
+```
+
+#### Google Vertex AI
+```bash
+# Set project ID via environment variable
+export GOOGLE_CLOUD_PROJECT=your-project-id
+python kernel_review_agent.py HEAD --provider google --model gemini-1.5-pro
+
+# Or pass project ID and location directly
+python kernel_review_agent.py HEAD --provider google --google-project your-project-id --google-location us-central1
 ```
 
 ### Upstream Comparison
@@ -285,10 +326,11 @@ jq -r 'select(."issue-severity-score" == "high") | .sha' \
 Edit `config.py` to change defaults:
 
 ```python
-# LLM API defaults
+# LLM API defaults (for OpenAI-compatible providers)
 DEFAULT_HOST = "localhost"
 DEFAULT_PORT = 8080
 DEFAULT_MODEL = "gpt-4"
+DEFAULT_API_KEY = "dummy"  # Most local servers don't require real keys
 
 # LLM parameters
 DEFAULT_MAX_TOKENS = 16000  # Increased for complex kernel reviews
@@ -327,11 +369,31 @@ CONNECT_TIMEOUT = 10  # seconds - timeout for initial connection
 ### "Must run in a git repository"
 Run the agent from within a Linux kernel git tree.
 
-### "Cannot connect to LLM API"
-Ensure your LLM server is running and accessible:
+### "Cannot connect to LLM API" or "Failed to initialize client"
+
+**For OpenAI-compatible servers:**
 ```bash
+# Verify server is running
 curl http://localhost:8080/v1/models
 ```
+
+**For Ollama:**
+```bash
+# Start Ollama server
+ollama serve
+
+# Verify it's running (in another terminal)
+curl http://localhost:11434/api/tags
+```
+
+**For Anthropic:**
+- Verify your API key is set: `echo $ANTHROPIC_API_KEY`
+- Check your API key is valid at https://console.anthropic.com/
+
+**For Google Vertex AI:**
+- Verify your project ID is set: `echo $GOOGLE_CLOUD_PROJECT`
+- Ensure you're authenticated: `gcloud auth application-default login`
+- Check the API is enabled in your GCP project
 
 ### "Failed to parse JSON" or "Response may be truncated"
 The LLM response was cut off before completing the JSON output. This happens when the response exceeds the token limit.

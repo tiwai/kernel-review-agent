@@ -12,7 +12,7 @@ import os
 
 import config
 from git_integration import CommitExtractor
-from llm_integration import OpenAIClient
+from llm_integration import create_llm_client, get_provider_from_args
 from prompt_management import PromptLoader, SubsystemMatcher
 from analysis import ReviewWorkflow
 from output import ReportFormatter, MetadataGenerator
@@ -67,6 +67,29 @@ Examples:
         "--model",
         default=config.DEFAULT_MODEL,
         help=f"Model name to use (default: {config.DEFAULT_MODEL})"
+    )
+
+    parser.add_argument(
+        "--provider",
+        choices=["openai", "anthropic", "google", "ollama"],
+        help="LLM provider (default: auto-detect from other options)"
+    )
+
+    # Provider-specific arguments
+    parser.add_argument(
+        "--anthropic-api-key",
+        help="Anthropic API key (or set ANTHROPIC_API_KEY env var)"
+    )
+
+    parser.add_argument(
+        "--google-project",
+        help="Google Cloud project ID (or set GOOGLE_CLOUD_PROJECT env var)"
+    )
+
+    parser.add_argument(
+        "--google-location",
+        default="us-central1",
+        help="Google Cloud region (default: us-central1)"
     )
 
     parser.add_argument(
@@ -135,20 +158,46 @@ Examples:
             print(f"[DEBUG]   Upstream branch: {args.upstream_branch}")
         print()
 
+    # Determine provider
+    provider = get_provider_from_args(args)
+    if args.debug:
+        print(f"[DEBUG]   Provider: {provider}")
+
     # Initialize components
     try:
-        llm = OpenAIClient(
-            host=args.host,
-            port=args.port,
-            api_key=args.api_key,
-            model=args.model,
-            verbose=args.verbose,
-            debug=args.debug,
-            dump_prompts=args.dump_prompts,
-            dump_dir=args.dump_dir
-        )
+        # Prepare provider-specific kwargs
+        provider_kwargs = {
+            'model': args.model,
+            'verbose': args.verbose,
+            'debug': args.debug,
+            'dump_prompts': args.dump_prompts,
+            'dump_dir': args.dump_dir,
+        }
+
+        if provider == 'openai':
+            provider_kwargs.update({
+                'host': args.host,
+                'port': args.port,
+                'api_key': args.api_key,
+            })
+        elif provider == 'ollama':
+            provider_kwargs.update({
+                'host': args.host,
+                'port': args.port,
+            })
+        elif provider == 'anthropic':
+            if args.anthropic_api_key:
+                provider_kwargs['api_key'] = args.anthropic_api_key
+        elif provider == 'google':
+            if args.google_project:
+                provider_kwargs['project_id'] = args.google_project
+            if args.google_location:
+                provider_kwargs['location'] = args.google_location
+
+        llm = create_llm_client(provider=provider, **provider_kwargs)
+
     except Exception as e:
-        print(f"Error: Failed to connect to LLM API at {args.host}:{args.port}", file=sys.stderr)
+        print(f"Error: Failed to initialize {provider} LLM client", file=sys.stderr)
         print(f"Details: {e}", file=sys.stderr)
         return 1
 

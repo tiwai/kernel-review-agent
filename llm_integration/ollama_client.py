@@ -1,25 +1,29 @@
-"""OpenAI-compatible API client for LLM communication."""
+"""Ollama client for LLM communication."""
 
 import time
 import os
 import sys
-from typing import List, Dict, Optional
-from openai import OpenAI
-from openai import APITimeoutError, APIConnectionError
+from typing import List, Dict
+
+try:
+    from openai import OpenAI
+    from openai import APITimeoutError, APIConnectionError
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
 import config
 from .base_client import LLMClient
 
 
-class OpenAIClient(LLMClient):
-    """Client for communicating with OpenAI-compatible LLM API."""
+class OllamaClient(LLMClient):
+    """Client for communicating with Ollama (OpenAI-compatible API)."""
 
     def __init__(
         self,
-        host: str = config.DEFAULT_HOST,
-        port: int = config.DEFAULT_PORT,
-        api_key: str = config.DEFAULT_API_KEY,
-        model: str = config.DEFAULT_MODEL,
+        host: str = "localhost",
+        port: int = 11434,
+        model: str = "llama3.1",
         verbose: bool = False,
         debug: bool = False,
         dump_prompts: bool = False,
@@ -27,22 +31,27 @@ class OpenAIClient(LLMClient):
         **kwargs
     ):
         """
-        Initialize OpenAI client.
+        Initialize Ollama client.
 
         Args:
-            host: API server host
-            port: API server port
-            api_key: API key (use "dummy" for local servers)
-            model: Model name to use
+            host: Ollama server host (default: localhost)
+            port: Ollama server port (default: 11434)
+            model: Model name (default: llama3.1)
             verbose: Enable verbose output
             debug: Enable debug output
             dump_prompts: Dump prompts and responses to files
             dump_dir: Directory for prompt/response dumps
         """
+        if not OPENAI_AVAILABLE:
+            raise RuntimeError(
+                "openai package not installed. Install with: pip install openai"
+            )
+
         super().__init__(model, verbose, debug, dump_prompts, dump_dir)
 
+        self.host = host
+        self.port = port
         self.base_url = f"http://{host}:{port}/v1"
-        self.api_key = api_key
 
         # Create dump directory if needed
         if self.dump_prompts and not os.path.exists(self.dump_dir):
@@ -53,14 +62,16 @@ class OpenAIClient(LLMClient):
         try:
             self.client = OpenAI(
                 base_url=self.base_url,
-                api_key=self.api_key,
+                api_key="ollama",  # Ollama doesn't require real API key
                 timeout=config.LLM_TIMEOUT
             )
         except Exception as e:
-            raise RuntimeError(f"Failed to initialize OpenAI client: {e}")
+            raise RuntimeError(f"Failed to initialize Ollama client: {e}")
 
         if self.debug:
-            print(f"[DEBUG] OpenAI client initialized with timeout: {config.LLM_TIMEOUT}s")
+            print(f"[DEBUG] Ollama client initialized with timeout: {config.LLM_TIMEOUT}s")
+            print(f"[DEBUG] Server: {self.base_url}")
+            print(f"[DEBUG] Using model: {self.model}")
 
     def analyze_code(
         self,
@@ -113,7 +124,7 @@ class OpenAIClient(LLMClient):
         max_tokens: int,
         temperature: float
     ) -> str:
-        """Call LLM API with exponential backoff retry."""
+        """Call Ollama API with exponential backoff retry."""
         last_error = None
 
         # Increment call counter for dump filenames
@@ -130,7 +141,7 @@ class OpenAIClient(LLMClient):
                     print(f"Retry attempt {attempt + 1}/{config.MAX_RETRIES}")
 
                 if self.debug:
-                    print(f"[DEBUG] LLM call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temperature}")
+                    print(f"[DEBUG] Ollama call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temperature}")
                     print(f"[DEBUG] System prompt length: {len(messages[0]['content'])} chars")
                     if len(messages) > 1:
                         print(f"[DEBUG] User prompt length: {len(messages[1]['content'])} chars")
@@ -180,7 +191,7 @@ class OpenAIClient(LLMClient):
 
             except APITimeoutError as e:
                 last_error = e
-                error_msg = f"LLM request timed out after {config.LLM_TIMEOUT}s"
+                error_msg = f"Ollama request timed out after {config.LLM_TIMEOUT}s"
                 if self.verbose or self.debug:
                     print(f"[TIMEOUT] {error_msg}")
 
@@ -195,9 +206,10 @@ class OpenAIClient(LLMClient):
 
             except APIConnectionError as e:
                 last_error = e
-                error_msg = f"Failed to connect to LLM server at {self.base_url}"
+                error_msg = f"Failed to connect to Ollama server at {self.base_url}"
                 if self.verbose or self.debug:
                     print(f"[CONNECTION ERROR] {error_msg}")
+                    print(f"[CONNECTION ERROR] Make sure Ollama is running: ollama serve")
 
                 if attempt < config.MAX_RETRIES - 1:
                     delay = config.RETRY_DELAY * (config.RETRY_BACKOFF ** attempt)
@@ -226,17 +238,17 @@ class OpenAIClient(LLMClient):
         # Provide specific error message based on error type
         if isinstance(last_error, APITimeoutError):
             raise RuntimeError(
-                f"LLM request timed out after {config.MAX_RETRIES} attempts. "
+                f"Ollama request timed out after {config.MAX_RETRIES} attempts. "
                 f"Each request times out after {config.LLM_TIMEOUT}s. "
                 f"Try increasing LLM_TIMEOUT in config.py or using a faster model."
             )
         elif isinstance(last_error, APIConnectionError):
             raise RuntimeError(
-                f"Failed to connect to LLM server at {self.base_url} after {config.MAX_RETRIES} attempts. "
-                f"Ensure the server is running and accessible."
+                f"Failed to connect to Ollama server at {self.base_url} after {config.MAX_RETRIES} attempts. "
+                f"Ensure Ollama is running (ollama serve) and accessible."
             )
         else:
-            raise RuntimeError(f"LLM API call failed after {config.MAX_RETRIES} attempts: {last_error}")
+            raise RuntimeError(f"Ollama API call failed after {config.MAX_RETRIES} attempts: {last_error}")
 
     def _dump_prompt(
         self,
@@ -250,7 +262,8 @@ class OpenAIClient(LLMClient):
 
         try:
             with open(filename, 'w') as f:
-                f.write(f"=== LLM Call #{call_id} ===\n")
+                f.write(f"=== Ollama Call #{call_id} ===\n")
+                f.write(f"Server: {self.base_url}\n")
                 f.write(f"Model: {self.model}\n")
                 f.write(f"Max Tokens: {max_tokens}\n")
                 f.write(f"Temperature: {temperature}\n")
@@ -275,7 +288,7 @@ class OpenAIClient(LLMClient):
 
         try:
             with open(filename, 'w') as f:
-                f.write(f"=== LLM Response #{call_id} ===\n\n")
+                f.write(f"=== Ollama Response #{call_id} ===\n\n")
                 f.write(response)
                 f.write("\n")
 
@@ -284,43 +297,3 @@ class OpenAIClient(LLMClient):
 
         except Exception as e:
             print(f"Warning: Failed to dump response: {e}")
-
-    def stream_response(
-        self,
-        system_prompt: str,
-        user_content: str,
-        max_tokens: int = config.DEFAULT_MAX_TOKENS,
-        temperature: float = config.DEFAULT_TEMPERATURE
-    ):
-        """
-        Stream LLM response for better UX (yields chunks).
-
-        Args:
-            system_prompt: System prompt
-            user_content: User content
-            max_tokens: Maximum tokens
-            temperature: Sampling temperature
-
-        Yields:
-            Response chunks as they arrive
-        """
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content}
-        ]
-
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                stream=True
-            )
-
-            for chunk in response:
-                if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
-
-        except Exception as e:
-            raise RuntimeError(f"Streaming failed: {e}")
