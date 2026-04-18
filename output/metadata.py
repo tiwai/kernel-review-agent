@@ -1,7 +1,7 @@
 """Generate JSON metadata for review results."""
 
 import json
-from typing import List, Dict
+from typing import List, Dict, Optional
 from git_integration import Commit
 
 
@@ -36,6 +36,53 @@ class MetadataGenerator:
             "issue-severity-score": severity,
             "issue-severity-explanation": explanation
         }
+
+    def generate_pre_verification_metadata(
+        self,
+        commit: Commit,
+        findings: List[Dict],
+        suse_verification: Optional[Dict] = None
+    ) -> Dict:
+        """
+        Generate metadata for pre-verification findings (before Task 3).
+
+        This captures findings from Task 2 before false-positive check,
+        including SUSE upstream verification results.
+
+        Args:
+            commit: Commit object
+            findings: Findings from Task 2 (before verification)
+            suse_verification: SUSE upstream verification result
+
+        Returns:
+            Pre-verification metadata dictionary
+        """
+        metadata = {
+            "author": commit.author,
+            "sha": commit.sha,
+            "subject": commit.subject,
+            "potential_issues_found": len(findings),
+            "findings": findings,  # Include full findings list
+            "verification_status": "pre_verification"
+        }
+
+        # Add SUSE upstream information if available
+        if suse_verification:
+            suse_info = {
+                "suse_commit_sha": commit.suse_commit,
+                "upstream_commit_sha": None,
+                "findings_in_upstream": len(suse_verification.get('findings_in_upstream', [])),
+                "findings_downstream_only": len(suse_verification.get('findings_only_downstream', []))
+            }
+
+            if suse_verification.get('upstream_commit'):
+                upstream = suse_verification['upstream_commit']
+                suse_info['upstream_commit_sha'] = upstream.sha
+                suse_info['upstream_subject'] = upstream.subject
+
+            metadata['suse_upstream_verification'] = suse_info
+
+        return metadata
 
     def _calculate_severity(
         self,

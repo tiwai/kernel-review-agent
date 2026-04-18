@@ -18,6 +18,7 @@ class ReviewResult:
     findings: List[Dict]
     summary: str
     subsystems_loaded: List[str]
+    suse_verification: Optional[Dict] = None  # SUSE upstream verification result
 
 
 class ReviewWorkflow:
@@ -30,7 +31,8 @@ class ReviewWorkflow:
         subsystem_matcher: SubsystemMatcher,
         verbose: bool = False,
         debug: bool = False,
-        skip_verification: bool = False
+        skip_verification: bool = False,
+        suse_verifier: Optional['SuseUpstreamVerifier'] = None
     ):
         """
         Initialize review workflow.
@@ -42,6 +44,7 @@ class ReviewWorkflow:
             verbose: Enable verbose output
             debug: Enable debug output
             skip_verification: Skip false-positive verification step
+            suse_verifier: SUSE upstream verifier (optional)
         """
         self.llm = llm_client
         self.prompts = prompt_loader
@@ -49,6 +52,7 @@ class ReviewWorkflow:
         self.verbose = verbose
         self.debug = debug
         self.skip_verification = skip_verification
+        self.suse_verifier = suse_verifier
 
     def execute_review(self, commit: Commit) -> ReviewResult:
         """
@@ -120,6 +124,34 @@ class ReviewWorkflow:
             for i, finding in enumerate(findings):
                 print(f"[DEBUG]   {i+1}. {finding.get('type')}: {finding.get('message', '')[:60]}...")
 
+        # Task 2.5: SUSE upstream verification (conditional)
+        suse_verification_result = None
+        if self.suse_verifier and self.suse_verifier.should_verify(commit, findings):
+            if self.verbose:
+                print("\n[3.5/5] Verifying against upstream...")
+            if self.debug:
+                print(f"[DEBUG] Task 2.5: SUSE upstream verification")
+
+            suse_verification_result = self.suse_verifier.verify_against_upstream(
+                commit, findings
+            )
+
+            # Annotate findings with upstream status
+            findings_in_upstream = set(
+                id(f) for f in suse_verification_result.get('findings_in_upstream', [])
+            )
+
+            for finding in findings:
+                if id(finding) in findings_in_upstream:
+                    finding['upstream_status'] = 'present_in_upstream'
+                else:
+                    finding['upstream_status'] = 'downstream_only'
+
+            if self.debug:
+                print(f"[DEBUG] SUSE verification complete")
+                print(f"[DEBUG]   Findings in upstream: {len(suse_verification_result.get('findings_in_upstream', []))}")
+                print(f"[DEBUG]   Downstream-only: {len(suse_verification_result.get('findings_only_downstream', []))}")
+
         # Task 3: Verify findings (eliminate false positives)
         if self.skip_verification:
             if self.verbose:
@@ -148,7 +180,7 @@ class ReviewWorkflow:
         if self.debug:
             print(f"[DEBUG] Task 4: Generating summary")
 
-        summary = self._generate_summary(commit, verified)
+        summary = self._generate_summary(commit, verified, suse_verification_result)
 
         if self.debug:
             print(f"[DEBUG] Summary: {summary}")
@@ -159,7 +191,8 @@ class ReviewWorkflow:
         return ReviewResult(
             findings=verified,
             summary=summary,
-            subsystems_loaded=subsystems
+            subsystems_loaded=subsystems,
+            suse_verification=suse_verification_result
         )
 
     def _gather_context(self, commit: Commit) -> Dict:
@@ -376,23 +409,46 @@ Return ONLY verified findings as JSON array (discard false positives):
 
         return []
 
-    def _generate_summary(self, commit: Commit, findings: List[Dict]) -> str:
+    def _generate_summary(
+        self,
+        commit: Commit,
+        findings: List[Dict],
+        suse_verification: Optional[Dict] = None
+    ) -> str:
         """
         Generate 1-2 sentence summary of review.
 
         Args:
             commit: Commit object
             findings: Verified findings
+            suse_verification: SUSE upstream verification result (optional)
 
         Returns:
             Summary string
         """
         if not findings:
-            return "This commit appears correct with no regressions found."
+            base = "This commit appears correct with no regressions found."
+            if suse_verification and suse_verification.get('upstream_commit'):
+                upstream = suse_verification['upstream_commit']
+                base += f" Verified against upstream: {upstream.subject}"
+            return base
 
         count = len(findings)
         types = set(f.get('type', 'issue') for f in findings)
 
+        # Check for upstream/downstream split
+        if suse_verification:
+            in_upstream = len(suse_verification.get('findings_in_upstream', []))
+            downstream_only = len(suse_verification.get('findings_only_downstream', []))
+
+            if downstream_only > 0:
+                return (f"This commit has {count} potential issues, "
+                       f"{downstream_only} unique to SUSE downstream that should be reviewed.")
+            elif in_upstream > 0:
+                return (f"This commit has {count} potential issues also present in upstream. "
+                       f"Consider reporting to upstream maintainers.")
+
+        # Default summary (existing logic)
         if count == 1:
             issue_type = findings[0].get('type', 'issue')
             return f"This commit has a potential {issue_type} that should be reviewed."
