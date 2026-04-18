@@ -192,6 +192,7 @@ The `<sha>` suffix (first 12 chars of commit SHA) prevents overwriting.
 - Review the `prompts/` directory to understand the review protocols
 - Customize subsystem matching in `prompt_management/subsystem_matcher.py`
 - Set up `KREVIEW_HOME` for easier access: `export KREVIEW_HOME=/your/install/path`
+- Use custom prompts with `--prompts-dir /path/to/custom-prompts` if needed
 
 ## Tips for Best Results
 

@@ -138,6 +138,12 @@ Examples:
         help="Skip false-positive verification step (faster but may report more issues)"
     )
 
+    parser.add_argument(
+        "--prompts-dir",
+        default=config.DEFAULT_PROMPTS_DIR,
+        help=f"Directory containing review prompts (default: $KREVIEW_HOME/prompts or {config.DEFAULT_PROMPTS_DIR})"
+    )
+
     args = parser.parse_args()
 
     # Check if in git repository
@@ -150,6 +156,7 @@ Examples:
     if args.debug:
         print(f"[DEBUG] Configuration:")
         print(f"[DEBUG]   Install directory: {config.INSTALL_DIR}")
+        print(f"[DEBUG]   Prompts directory: {args.prompts_dir}")
         print(f"[DEBUG]   LLM: {args.host}:{args.port}")
         print(f"[DEBUG]   Model: {args.model}")
         print(f"[DEBUG]   Verbose: {args.verbose}")
@@ -217,10 +224,18 @@ Examples:
         print(f"Details: {e}", file=sys.stderr)
         return 1
 
-    prompts = PromptLoader()
-    if args.debug:
-        print(f"[DEBUG]   Prompts directory: {prompts.prompts_dir}")
-        print()
+    # Verify prompts directory exists
+    if not os.path.exists(args.prompts_dir):
+        print(f"Error: Prompts directory not found: {args.prompts_dir}", file=sys.stderr)
+        print(f"Tip: Set KREVIEW_HOME environment variable or use --prompts-dir option", file=sys.stderr)
+        return 1
+
+    try:
+        prompts = PromptLoader(prompts_dir=args.prompts_dir)
+    except Exception as e:
+        print(f"Error: Failed to initialize prompt loader", file=sys.stderr)
+        print(f"Details: {e}", file=sys.stderr)
+        return 1
 
     matcher = SubsystemMatcher()
     workflow = ReviewWorkflow(

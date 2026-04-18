@@ -6,6 +6,10 @@ import os
 # Can be overridden with KREVIEW_HOME environment variable
 INSTALL_DIR = os.environ.get('KREVIEW_HOME', os.path.dirname(os.path.abspath(__file__)))
 
+# Default prompts directory
+# Can be overridden with --prompts-dir command-line option
+DEFAULT_PROMPTS_DIR = os.path.join(INSTALL_DIR, 'prompts')
+
 # LLM API defaults
 DEFAULT_HOST = "localhost"
 DEFAULT_PORT = 8080
