@@ -394,7 +394,8 @@ Examples:
             report_text = formatter.format_report(
                 commit,
                 result.findings,
-                summary=result.summary
+                summary=result.summary,
+                suse_verification=result.suse_verification
             )
             metadata = metadata_gen.generate(commit, result.findings)
 

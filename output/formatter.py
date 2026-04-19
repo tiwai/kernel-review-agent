@@ -1,7 +1,7 @@
 """Format review findings as LKML-compliant plain text."""
 
 import textwrap
-from typing import List, Dict
+from typing import List, Dict, Optional
 from git_integration import Commit
 
 
@@ -22,7 +22,8 @@ class ReportFormatter:
         self,
         commit: Commit,
         findings: List[Dict],
-        summary: str = None
+        summary: str = None,
+        suse_verification: Dict = None
     ) -> str:
         """
         Format review findings as LKML-compliant plain text.
@@ -31,6 +32,7 @@ class ReportFormatter:
             commit: Commit object
             findings: List of finding dictionaries
             summary: Optional 1-2 sentence summary
+            suse_verification: Optional SUSE upstream verification result
 
         Returns:
             Formatted plain text report
@@ -54,6 +56,22 @@ class ReportFormatter:
                 lines.append(f"suse-commit: {commit.suse_commit}")
             if commit.upstream_commit:
                 lines.append(f"Git-commit: {commit.upstream_commit}")
+            lines.append("")
+
+        # Verified upstream commit (if SUSE verification was performed)
+        if suse_verification and suse_verification.get('upstream_commit'):
+            upstream = suse_verification['upstream_commit']
+            lines.append(f"Verified-against: {upstream.sha}")
+            lines.append(f"Upstream-subject: {upstream.subject}")
+
+            # Show upstream/downstream classification if available
+            findings_in_upstream = len(suse_verification.get('findings_in_upstream', []))
+            findings_downstream = len(suse_verification.get('findings_only_downstream', []))
+
+            if findings_in_upstream > 0 or findings_downstream > 0:
+                lines.append(f"Findings-in-upstream: {findings_in_upstream}")
+                lines.append(f"Findings-downstream-only: {findings_downstream}")
+
             lines.append("")
 
         # Summary (if provided or generate default)
