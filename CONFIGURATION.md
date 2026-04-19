@@ -136,13 +136,13 @@ This sets `CATEGORIZE_MAX_TOKENS`, `ANALYZE_MAX_TOKENS`, and `VERIFY_MAX_TOKENS`
 
 ```json
 {
-  "MAX_RETRIES": 3,
+  "MAX_RETRIES": 1,
   "RETRY_DELAY": 1.0,
   "RETRY_BACKOFF": 2.0
 }
 ```
 
-- `MAX_RETRIES`: Number of retry attempts (default: `3`)
+- `MAX_RETRIES`: Number of retry attempts (default: `1`)
 - `RETRY_DELAY`: Initial delay in seconds (default: `1.0`)
 - `RETRY_BACKOFF`: Exponential backoff multiplier (default: `2.0`)
 

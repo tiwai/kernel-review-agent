@@ -103,7 +103,7 @@ def load_configuration():
         'TRUNCATION_WARNING_THRESHOLD': 0.95,
 
         # Retry configuration
-        'MAX_RETRIES': 3,
+        'MAX_RETRIES': 1,
         'RETRY_DELAY': 1.0,
         'RETRY_BACKOFF': 2.0,
 
