@@ -73,6 +73,33 @@ class CommitExtractor:
 
         return None
 
+    def extract_tag_from_diff(self, diff: str, tag_name: str) -> Optional[str]:
+        """
+        Extract tag value from diff content.
+
+        In SUSE kernel-source, tags appear in the diff as added lines.
+        Looks for patterns like:
+            +Git-commit: abc123def456...
+            +Patch-mainline: v6.1-rc1
+
+        Args:
+            diff: Diff content
+            tag_name: Tag name to search for (e.g., 'Git-commit', 'Patch-mainline')
+
+        Returns:
+            Tag value (commit SHA or version) or None if not found
+        """
+        # Match lines starting with "+" followed by tag
+        # Pattern: "+Git-commit: <sha>" where + is the diff marker
+        pattern = rf'^\+{re.escape(tag_name)}:\s*([0-9a-fA-F]+)'
+
+        for line in diff.split('\n'):
+            match = re.match(pattern, line, re.IGNORECASE)
+            if match:
+                return match.group(1)
+
+        return None
+
     def expand_range(self, range_spec: str) -> List[str]:
         """
         Convert git range to list of commit SHAs.
@@ -248,9 +275,12 @@ class MultiRepoExtractor:
             # Extract files
             files = self.extractor._extract_files_from_diff(diff)
 
-            # Extract tags (both suse-commit and Git-commit)
+            # Extract tags
+            # suse-commit appears in commit message
             suse_commit = self.extractor.extract_tag(message, 'suse-commit')
-            git_commit = self.extractor.extract_tag(message, 'Git-commit')
+
+            # Git-commit appears in the diff (as "+Git-commit: <sha>" in patch files)
+            git_commit = self.extractor.extract_tag_from_diff(diff, 'Git-commit')
 
             return Commit(
                 sha=sha,
@@ -261,7 +291,7 @@ class MultiRepoExtractor:
                 diff=diff,
                 files=files,
                 suse_commit=suse_commit,
-                upstream_commit=git_commit  # Git-commit tag from SUSE repo
+                upstream_commit=git_commit  # Git-commit tag from SUSE repo diff
             )
 
         except subprocess.CalledProcessError:
