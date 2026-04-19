@@ -23,7 +23,8 @@ class ReportFormatter:
         commit: Commit,
         findings: List[Dict],
         summary: str = None,
-        suse_verification: Dict = None
+        suse_verification: Dict = None,
+        elapsed_time: float = None
     ) -> str:
         """
         Format review findings as LKML-compliant plain text.
@@ -33,6 +34,7 @@ class ReportFormatter:
             findings: List of finding dictionaries
             summary: Optional 1-2 sentence summary
             suse_verification: Optional SUSE upstream verification result
+            elapsed_time: Optional elapsed time in seconds
 
         Returns:
             Formatted plain text report
@@ -90,9 +92,13 @@ class ReportFormatter:
 
         lines.append("")
 
+        # Processing time (if provided)
+        if elapsed_time is not None:
+            lines.append(f"Review-time: {elapsed_time:.2f} seconds")
+            lines.append("")
+
         # If no findings, end here
         if not findings:
-            lines.append("")
             return "\n".join(lines)
 
         # Quoted diff with inline findings

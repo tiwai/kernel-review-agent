@@ -9,6 +9,7 @@ Focuses on code changes only, ignoring commit message quality and tags.
 import argparse
 import sys
 import os
+import time
 
 # Add module directory to Python path for system-wide installation
 # This allows the script to find modules when installed in /usr/bin
@@ -356,8 +357,13 @@ Examples:
             if len(commits) > 1 and args.verbose:
                 print(f"[{i}/{len(commits)}] Processing commit {commit.sha[:12]}...")
 
-            # Execute review
+            # Execute review with timing
+            start_time = time.time()
             result = workflow.execute_review(commit)
+            elapsed_time = time.time() - start_time
+
+            if args.debug:
+                print(f"[DEBUG] Review completed in {elapsed_time:.2f} seconds")
 
             # Save pre-verification findings if SUSE verification was done
             sha_short = commit.sha[:12]
@@ -395,9 +401,10 @@ Examples:
                 commit,
                 result.findings,
                 summary=result.summary,
-                suse_verification=result.suse_verification
+                suse_verification=result.suse_verification,
+                elapsed_time=elapsed_time
             )
-            metadata = metadata_gen.generate(commit, result.findings)
+            metadata = metadata_gen.generate(commit, result.findings, elapsed_time=elapsed_time)
 
             report_path = os.path.join(output_dir, f"review-inline-{sha_short}.txt")
             metadata_path = os.path.join(output_dir, f"review-metadata-{sha_short}.json")

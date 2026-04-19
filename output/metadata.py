@@ -11,7 +11,8 @@ class MetadataGenerator:
     def generate(
         self,
         commit: Commit,
-        findings: List[Dict]
+        findings: List[Dict],
+        elapsed_time: float = None
     ) -> Dict:
         """
         Generate metadata JSON.
@@ -19,6 +20,7 @@ class MetadataGenerator:
         Args:
             commit: Commit object
             findings: List of findings
+            elapsed_time: Optional elapsed time in seconds
 
         Returns:
             Metadata dictionary
@@ -36,6 +38,10 @@ class MetadataGenerator:
             "issue-severity-score": severity,
             "issue-severity-explanation": explanation
         }
+
+        # Include elapsed time if provided
+        if elapsed_time is not None:
+            metadata["review-time-seconds"] = round(elapsed_time, 2)
 
         # Include SUSE commit IDs if present
         if commit.suse_commit:
