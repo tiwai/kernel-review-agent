@@ -102,6 +102,24 @@ All values are optional. If not specified, hardcoded defaults are used.
 
 **Increase these if you get truncation warnings with large commits.**
 
+#### Command-Line Override
+
+You can override all token limits at runtime without modifying config files:
+
+```bash
+./kernel_review_agent.py abc123 --max-tokens 32000
+```
+
+This sets `CATEGORIZE_MAX_TOKENS`, `ANALYZE_MAX_TOKENS`, and `VERIFY_MAX_TOKENS` to all use the specified value, overriding both config file settings and hardcoded defaults.
+
+**Use cases:**
+- Testing with different token limits temporarily
+- Switching between models with different capacities
+- Increasing limits for very large commits
+- Decreasing limits for faster (but potentially truncated) responses
+
+**Precedence:** CLI override > user config > system config > hardcoded defaults
+
 ### Temperature
 
 ```json

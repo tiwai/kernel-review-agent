@@ -223,6 +223,23 @@ python kernel_review_agent.py HEAD --skip-verification
 - **More findings**: May report defensive programming as issues
 - **Less precise**: False positives not filtered out
 
+```bash
+# Override maximum output tokens for all LLM calls
+python kernel_review_agent.py HEAD --max-tokens 32000
+
+# Useful when:
+# - Using models with different token limits (8k vs 32k vs 128k)
+# - Getting truncated responses (increase limit)
+# - Wanting faster responses (decrease limit)
+```
+
+**Default token limits:**
+- Categorize changes: 8,000 tokens
+- Analyze regressions: 16,000 tokens
+- Verify findings: 16,000 tokens
+
+When `--max-tokens` is specified, all tasks use the same limit.
+
 ### Debug Options
 
 ```bash

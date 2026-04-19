@@ -130,6 +130,12 @@ Examples:
     )
 
     parser.add_argument(
+        "--max-tokens",
+        type=int,
+        help="Override maximum output tokens for all LLM calls (default: task-specific limits)"
+    )
+
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose output"
@@ -198,6 +204,17 @@ Examples:
         print(f"[DEBUG]   Skip verification: {args.skip_verification}")
         print(f"[DEBUG]   Output directory: {args.output_dir}")
         print()
+
+    # Override token limits if --max-tokens specified
+    if args.max_tokens:
+        config.DEFAULT_MAX_TOKENS = args.max_tokens
+        config.CATEGORIZE_MAX_TOKENS = args.max_tokens
+        config.ANALYZE_MAX_TOKENS = args.max_tokens
+        config.VERIFY_MAX_TOKENS = args.max_tokens
+
+        if args.debug:
+            print(f"[DEBUG] Token limits overridden to: {args.max_tokens}")
+            print()
 
     # Set Google credentials if specified
     if hasattr(args, 'google_credentials') and args.google_credentials:
