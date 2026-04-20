@@ -44,6 +44,14 @@
   they introduce larger logic bugs
 - READ_ONCE() is not required when the data structure being read is protected by a lock we're currently holding
 
+### Kernel Build Knowledge
+- **__GENKSYMS__**: Code inside `#ifdef __GENKSYMS__` blocks is NEVER compiled
+  - These blocks exist ONLY for ABI compatibility checking tools (genksyms)
+  - The kernel is never built with `__GENKSYMS__` defined
+  - Changes to code inside `__GENKSYMS__` blocks cannot cause compilation errors
+  - Do NOT report build failures or type mismatches for code in these blocks
+  - These are commonly used to work around kernel ABI incompatibilities between different versions
+
 ### RCU Mandatory Check
 - **CRITICAL**: When you see `call_rcu()`, `synchronize_rcu()`, or `kfree_rcu()`:
   - IMMEDIATELY load `subsystem/rcu.md`

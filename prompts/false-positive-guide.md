@@ -233,6 +233,9 @@ We expect each patch in the series to be working toward a larger goal, BUT
 we require each patch to be self contained and correct.  Specifically:
 
 - Each patch must compile
+  - EXCEPTION: Code inside `#ifdef __GENKSYMS__` blocks is never compiled (only
+    used by ABI checking tools), so compilation errors in these blocks should be
+    ignored
 - New bugs must not be introduced
 
 Intermediate patches in a series may intentionally introduce performance issues
