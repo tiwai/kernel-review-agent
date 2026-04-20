@@ -167,6 +167,12 @@ Examples:
     )
 
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force re-review even if output directory already exists for the commit"
+    )
+
+    parser.add_argument(
         "--prompts-dir",
         default=config.DEFAULT_PROMPTS_DIR,
         help=f"Directory containing review prompts (default: {config.DEFAULT_PROMPTS_DIR})"
@@ -357,8 +363,8 @@ Examples:
             sha_short = commit.sha[:12]
             commit_dir = os.path.join(args.output_dir, commit.sha[:2], commit.sha)
 
-            # Check if commit was already processed (directory exists)
-            if os.path.exists(commit_dir):
+            # Check if commit was already processed (directory exists), unless --force
+            if not args.force and os.path.exists(commit_dir):
                 if args.verbose:
                     print(f"[{i}/{len(commits)}] Skipping already processed commit {sha_short}...")
                 skipped += 1

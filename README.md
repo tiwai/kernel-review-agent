@@ -224,6 +224,21 @@ python kernel_review_agent.py HEAD --skip-verification
 - **Less precise**: False positives not filtered out
 
 ```bash
+# Force re-review even if output already exists
+python kernel_review_agent.py HEAD --force
+
+# Useful when:
+# - Re-running with updated prompts or configuration
+# - Testing changes to the review workflow
+# - Overwriting previous results
+```
+
+**About output directory checking:**
+- By default, commits with existing output directories are skipped (for resumability)
+- Use `--force` to re-review and overwrite existing results
+- Allows updating reviews after prompt improvements or configuration changes
+
+```bash
 # Override maximum output tokens for all LLM calls
 python kernel_review_agent.py HEAD --max-tokens 32000
 
@@ -288,7 +303,7 @@ The directory path is `$OUTPUT_DIR/$ID1/$ID2/` where:
 - `$ID1` = first 2 characters of commit SHA (e.g., "ab")
 - `$ID2` = full commit SHA (e.g., "abc123def456789...")
 
-If a commit directory already exists, the review is skipped (allows resuming interrupted batch reviews).
+**Resumability**: If a commit directory already exists, the review is skipped (allows resuming interrupted batch reviews). Use `--force` to override and re-review existing commits.
 
 ### 1. `review-inline.txt`
 
