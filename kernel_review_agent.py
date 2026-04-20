@@ -340,9 +340,6 @@ Examples:
     failed = 0
     skipped = 0
 
-    # Prepare LIST file path
-    list_path = os.path.join(args.output_dir, "LIST")
-
     # Process each commit
     for i, commit_ref in enumerate(commits, 1):
         try:
@@ -417,13 +414,6 @@ Examples:
 
             metadata_gen.save_json(metadata, metadata_path)
 
-            # Append to LIST file immediately
-            try:
-                with open(list_path, 'a') as f:
-                    f.write(f"{commit.sha} {commit.subject}\n")
-            except Exception as e:
-                print(f"Warning: Failed to write to LIST file: {e}", file=sys.stderr)
-
             # Print summary
             print(f"✓ Commit {sha_short}: {commit.subject}")
             print(f"  Issues found: {len(result.findings)}")
@@ -481,8 +471,6 @@ Examples:
             print(f"  ✗ {failed} failed")
         if skipped > 0:
             print(f"  ⊘ {skipped} skipped")
-        if successful > 0:
-            print(f"  Processed commits list: {list_path}")
         print("=" * 70)
 
     # Return error code if all commits failed

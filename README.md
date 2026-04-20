@@ -269,7 +269,7 @@ The dump files are useful for:
 
 ## Output Files
 
-For each commit reviewed, the following files are generated:
+For each commit reviewed, two files are generated:
 
 ### 1. `review-inline-<sha>.txt`
 
@@ -313,19 +313,6 @@ Structured JSON metadata:
 ```
 
 Severity levels: `none`, `low`, `medium`, `high`, `urgent`
-
-### 3. `LIST`
-
-When processing commits, a `LIST` file is generated and updated incrementally as each commit is successfully processed:
-```
-abc123def456789 mm: fix use-after-free in page reclaim
-def456789abc123 net: check socket state before free
-789abc123def456 bpf: validate map access bounds
-```
-
-Format: `<full-sha> <commit-subject>` (one per line, in processing order)
-
-This file is similar to `git log --pretty=oneline` output but only includes commits that were successfully processed (skipped merge commits and failed commits are excluded). The file is updated immediately after each commit is processed, so it will contain partial results if the program is interrupted.
 
 ## Architecture
 
