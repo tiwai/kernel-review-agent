@@ -452,8 +452,7 @@ All options are optional. See `config.json.example` for a complete template.
 - `CONNECT_TIMEOUT`: Connection timeout in seconds (default: `10`)
 
 **Other:**
-- `DEFAULT_TEMPERATURE`: Sampling temperature (default: `0.1`)
-- `MAX_RETRIES`: Number of retries (default: `3`)
+- `MAX_RETRIES`: Number of retries (default: `1`)
 - `RETRY_DELAY`: Initial retry delay in seconds (default: `1.0`)
 - `RETRY_BACKOFF`: Exponential backoff multiplier (default: `2.0`)
 

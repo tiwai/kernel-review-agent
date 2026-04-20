@@ -120,18 +120,6 @@ This sets `CATEGORIZE_MAX_TOKENS`, `ANALYZE_MAX_TOKENS`, and `VERIFY_MAX_TOKENS`
 
 **Precedence:** CLI override > user config > system config > hardcoded defaults
 
-### Temperature
-
-```json
-{
-  "DEFAULT_TEMPERATURE": 0.1
-}
-```
-
-- `DEFAULT_TEMPERATURE`: Sampling temperature (default: `0.1`)
-  - Lower (0.0-0.3): More deterministic, consistent
-  - Higher (0.5-1.0): More creative, varied
-
 ### Retry Configuration
 
 ```json

@@ -3,7 +3,7 @@
 import time
 import os
 import sys
-from typing import List, Dict
+from typing import List, Dict, Optional, Any
 
 try:
     import vertexai
@@ -82,7 +82,7 @@ class GoogleClient(LLMClient):
         system_prompt: str,
         user_content: str,
         max_tokens: int = config.DEFAULT_MAX_TOKENS,
-        temperature: float = config.DEFAULT_TEMPERATURE
+        temperature: Optional[float] = None
     ) -> str:
         """
         Send single prompt to LLM and get response.
@@ -91,7 +91,7 @@ class GoogleClient(LLMClient):
             system_prompt: System prompt (instructions, context)
             user_content: User content (diff, code, etc.)
             max_tokens: Maximum tokens in response
-            temperature: Sampling temperature
+            temperature: Sampling temperature (None = use model default)
 
         Returns:
             LLM response text
@@ -105,7 +105,7 @@ class GoogleClient(LLMClient):
         self,
         messages: List[Dict[str, str]],
         max_tokens: int = config.DEFAULT_MAX_TOKENS,
-        temperature: float = config.DEFAULT_TEMPERATURE
+        temperature: Optional[float] = None
     ) -> str:
         """
         Send multi-turn conversation to LLM.
@@ -113,7 +113,7 @@ class GoogleClient(LLMClient):
         Args:
             messages: List of message dicts with 'role' and 'content'
             max_tokens: Maximum tokens in response
-            temperature: Sampling temperature
+            temperature: Sampling temperature (None = use model default)
 
         Returns:
             LLM response text
@@ -130,7 +130,7 @@ class GoogleClient(LLMClient):
         self,
         prompt: str,
         max_tokens: int,
-        temperature: float
+        temperature: Optional[float]
     ) -> str:
         """Call Google Vertex AI with exponential backoff retry."""
         last_error = None
@@ -146,8 +146,9 @@ class GoogleClient(LLMClient):
         # Configure generation parameters
         generation_config = {
             'max_output_tokens': max_tokens,
-            'temperature': temperature,
         }
+        if temperature is not None:
+            generation_config['temperature'] = temperature
 
         for attempt in range(config.MAX_RETRIES):
             try:
@@ -155,7 +156,8 @@ class GoogleClient(LLMClient):
                     print(f"Retry attempt {attempt + 1}/{config.MAX_RETRIES}")
 
                 if self.debug:
-                    print(f"[DEBUG] Google call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temperature}")
+                    temp_str = f"{temperature}" if temperature is not None else "default"
+                    print(f"[DEBUG] Google call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temp_str}")
                     print(f"[DEBUG] Prompt length: {len(prompt)} chars")
 
                 response = self.client.generate_content(
@@ -231,7 +233,7 @@ class GoogleClient(LLMClient):
         call_id: int,
         prompt: str,
         max_tokens: int,
-        temperature: float
+        temperature: Optional[float]
     ):
         """Dump prompt to file for debugging."""
         filename = os.path.join(self.dump_dir, f"{call_id:03d}_prompt.txt")
@@ -243,7 +245,8 @@ class GoogleClient(LLMClient):
                 f.write(f"Project: {self.project_id}\n")
                 f.write(f"Location: {self.location}\n")
                 f.write(f"Max Tokens: {max_tokens}\n")
-                f.write(f"Temperature: {temperature}\n")
+                temp_str = f"{temperature}" if temperature is not None else "default"
+                f.write(f"Temperature: {temp_str}\n")
                 f.write(f"\n{'='*80}\n\n")
                 f.write(prompt)
                 f.write(f"\n\n{'='*80}\n\n")

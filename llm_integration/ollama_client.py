@@ -3,7 +3,7 @@
 import time
 import os
 import sys
-from typing import List, Dict
+from typing import List, Dict, Optional, Any
 
 try:
     from openai import OpenAI
@@ -78,7 +78,7 @@ class OllamaClient(LLMClient):
         system_prompt: str,
         user_content: str,
         max_tokens: int = config.DEFAULT_MAX_TOKENS,
-        temperature: float = config.DEFAULT_TEMPERATURE
+        temperature: Optional[float] = None
     ) -> str:
         """
         Send single prompt to LLM and get response.
@@ -87,7 +87,7 @@ class OllamaClient(LLMClient):
             system_prompt: System prompt (instructions, context)
             user_content: User content (diff, code, etc.)
             max_tokens: Maximum tokens in response
-            temperature: Sampling temperature
+            temperature: Sampling temperature (None = use model default)
 
         Returns:
             LLM response text
@@ -103,7 +103,7 @@ class OllamaClient(LLMClient):
         self,
         messages: List[Dict[str, str]],
         max_tokens: int = config.DEFAULT_MAX_TOKENS,
-        temperature: float = config.DEFAULT_TEMPERATURE
+        temperature: Optional[float] = None
     ) -> str:
         """
         Send multi-turn conversation to LLM.
@@ -111,7 +111,7 @@ class OllamaClient(LLMClient):
         Args:
             messages: List of message dicts with 'role' and 'content'
             max_tokens: Maximum tokens in response
-            temperature: Sampling temperature
+            temperature: Sampling temperature (None = use model default)
 
         Returns:
             LLM response text
@@ -122,7 +122,7 @@ class OllamaClient(LLMClient):
         self,
         messages: List[Dict[str, str]],
         max_tokens: int,
-        temperature: float
+        temperature: Optional[float]
     ) -> str:
         """Call Ollama API with exponential backoff retry."""
         last_error = None
@@ -141,18 +141,23 @@ class OllamaClient(LLMClient):
                     print(f"Retry attempt {attempt + 1}/{config.MAX_RETRIES}")
 
                 if self.debug:
-                    print(f"[DEBUG] Ollama call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temperature}")
+                    temp_str = f"{temperature}" if temperature is not None else "default"
+                    print(f"[DEBUG] Ollama call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temp_str}")
                     print(f"[DEBUG] System prompt length: {len(messages[0]['content'])} chars")
                     if len(messages) > 1:
                         print(f"[DEBUG] User prompt length: {len(messages[1]['content'])} chars")
 
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    stream=False
-                )
+                # Build API call kwargs
+                api_kwargs: Dict[str, Any] = {
+                    "model": self.model,
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "stream": False
+                }
+                if temperature is not None:
+                    api_kwargs["temperature"] = temperature
+
+                response = self.client.chat.completions.create(**api_kwargs)
 
                 response_text = response.choices[0].message.content
                 finish_reason = response.choices[0].finish_reason
@@ -255,7 +260,7 @@ class OllamaClient(LLMClient):
         call_id: int,
         messages: List[Dict[str, str]],
         max_tokens: int,
-        temperature: float
+        temperature: Optional[float]
     ):
         """Dump prompt to file for debugging."""
         filename = os.path.join(self.dump_dir, f"{call_id:03d}_prompt.txt")
@@ -266,7 +271,8 @@ class OllamaClient(LLMClient):
                 f.write(f"Server: {self.base_url}\n")
                 f.write(f"Model: {self.model}\n")
                 f.write(f"Max Tokens: {max_tokens}\n")
-                f.write(f"Temperature: {temperature}\n")
+                temp_str = f"{temperature}" if temperature is not None else "default"
+                f.write(f"Temperature: {temp_str}\n")
                 f.write(f"\n{'='*80}\n\n")
 
                 for i, msg in enumerate(messages):

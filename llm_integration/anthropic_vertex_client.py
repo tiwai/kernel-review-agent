@@ -3,7 +3,7 @@
 import time
 import os
 import sys
-from typing import List, Dict
+from typing import List, Dict, Optional, Any
 
 try:
     from anthropic import AnthropicVertex
@@ -83,7 +83,7 @@ class AnthropicVertexClient(LLMClient):
         system_prompt: str,
         user_content: str,
         max_tokens: int = config.DEFAULT_MAX_TOKENS,
-        temperature: float = config.DEFAULT_TEMPERATURE
+        temperature: Optional[float] = None
     ) -> str:
         """
         Send single prompt to LLM and get response.
@@ -92,7 +92,7 @@ class AnthropicVertexClient(LLMClient):
             system_prompt: System prompt (instructions, context)
             user_content: User content (diff, code, etc.)
             max_tokens: Maximum tokens in response
-            temperature: Sampling temperature
+            temperature: Sampling temperature (None = use model default)
 
         Returns:
             LLM response text
@@ -107,7 +107,7 @@ class AnthropicVertexClient(LLMClient):
         self,
         messages: List[Dict[str, str]],
         max_tokens: int = config.DEFAULT_MAX_TOKENS,
-        temperature: float = config.DEFAULT_TEMPERATURE
+        temperature: Optional[float] = None
     ) -> str:
         """
         Send multi-turn conversation to LLM.
@@ -115,7 +115,7 @@ class AnthropicVertexClient(LLMClient):
         Args:
             messages: List of message dicts with 'role' and 'content'
             max_tokens: Maximum tokens in response
-            temperature: Sampling temperature
+            temperature: Sampling temperature (None = use model default)
 
         Returns:
             LLM response text
@@ -137,7 +137,7 @@ class AnthropicVertexClient(LLMClient):
         system_prompt: str,
         messages: List[Dict[str, str]],
         max_tokens: int,
-        temperature: float
+        temperature: Optional[float]
     ) -> str:
         """Call Anthropic Vertex AI with exponential backoff retry."""
         last_error = None
@@ -156,18 +156,23 @@ class AnthropicVertexClient(LLMClient):
                     print(f"Retry attempt {attempt + 1}/{config.MAX_RETRIES}")
 
                 if self.debug:
-                    print(f"[DEBUG] Anthropic Vertex call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temperature}")
+                    temp_str = f"{temperature}" if temperature is not None else "default"
+                    print(f"[DEBUG] Anthropic Vertex call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temp_str}")
                     print(f"[DEBUG] System prompt length: {len(system_prompt)} chars")
                     total_msg_len = sum(len(m['content']) for m in messages)
                     print(f"[DEBUG] Messages total length: {total_msg_len} chars")
 
-                response = self.client.messages.create(
-                    model=self.model,
-                    system=system_prompt,
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature
-                )
+                # Build API call kwargs
+                api_kwargs: Dict[str, Any] = {
+                    "model": self.model,
+                    "system": system_prompt,
+                    "messages": messages,
+                    "max_tokens": max_tokens
+                }
+                if temperature is not None:
+                    api_kwargs["temperature"] = temperature
+
+                response = self.client.messages.create(**api_kwargs)
 
                 response_text = response.content[0].text
                 stop_reason = response.stop_reason
@@ -244,7 +249,7 @@ class AnthropicVertexClient(LLMClient):
         system_prompt: str,
         messages: List[Dict[str, str]],
         max_tokens: int,
-        temperature: float
+        temperature: Optional[float]
     ):
         """Dump prompt to file for debugging."""
         filename = os.path.join(self.dump_dir, f"{call_id:03d}_prompt.txt")
@@ -256,7 +261,8 @@ class AnthropicVertexClient(LLMClient):
                 f.write(f"Project: {self.project_id}\n")
                 f.write(f"Location: {self.location}\n")
                 f.write(f"Max Tokens: {max_tokens}\n")
-                f.write(f"Temperature: {temperature}\n")
+                temp_str = f"{temperature}" if temperature is not None else "default"
+                f.write(f"Temperature: {temp_str}\n")
                 f.write(f"\n{'='*80}\n\n")
 
                 if system_prompt:

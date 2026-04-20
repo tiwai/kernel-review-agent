@@ -1,7 +1,7 @@
 """Abstract base class for LLM clients."""
 
 from abc import ABC, abstractmethod
-from typing import List, Dict
+from typing import List, Dict, Optional
 import config
 
 
@@ -39,7 +39,7 @@ class LLMClient(ABC):
         system_prompt: str,
         user_content: str,
         max_tokens: int = config.DEFAULT_MAX_TOKENS,
-        temperature: float = config.DEFAULT_TEMPERATURE
+        temperature: Optional[float] = None
     ) -> str:
         """
         Send single prompt to LLM and get response.
@@ -48,7 +48,7 @@ class LLMClient(ABC):
             system_prompt: System prompt (instructions, context)
             user_content: User content (diff, code, etc.)
             max_tokens: Maximum tokens in response
-            temperature: Sampling temperature
+            temperature: Sampling temperature (None = use model default)
 
         Returns:
             LLM response text
@@ -60,7 +60,7 @@ class LLMClient(ABC):
         self,
         messages: List[Dict[str, str]],
         max_tokens: int = config.DEFAULT_MAX_TOKENS,
-        temperature: float = config.DEFAULT_TEMPERATURE
+        temperature: Optional[float] = None
     ) -> str:
         """
         Send multi-turn conversation to LLM.
@@ -68,7 +68,7 @@ class LLMClient(ABC):
         Args:
             messages: List of message dicts with 'role' and 'content'
             max_tokens: Maximum tokens in response
-            temperature: Sampling temperature
+            temperature: Sampling temperature (None = use model default)
 
         Returns:
             LLM response text
