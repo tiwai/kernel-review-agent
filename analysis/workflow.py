@@ -336,10 +336,16 @@ If no issues found, return: []
         except json.JSONDecodeError as e:
             if self.verbose or self.debug:
                 print(f"[ERROR] Failed to parse regression analysis JSON: {e}", file=sys.stderr)
+                print(f"[ERROR] Error details: {str(e)}", file=sys.stderr)
                 print(f"[ERROR] Response may be truncated. Last 100 chars: ...{response[-100:]}", file=sys.stderr)
                 print(f"[ERROR] Increase ANALYZE_MAX_TOKENS in config.py (current: {config.ANALYZE_MAX_TOKENS})", file=sys.stderr)
-                if self.dump_prompts:
+                if self.llm.dump_prompts:
                     print(f"[ERROR] Check dump files in {self.llm.dump_dir}/ for full response", file=sys.stderr)
+                # Try to show the problematic area
+                if hasattr(e, 'pos'):
+                    start = max(0, e.pos - 50)
+                    end = min(len(response), e.pos + 50)
+                    print(f"[ERROR] Context around error position {e.pos}: ...{response[start:end]}...", file=sys.stderr)
 
         return []
 
