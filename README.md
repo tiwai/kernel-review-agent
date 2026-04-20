@@ -269,9 +269,28 @@ The dump files are useful for:
 
 ## Output Files
 
-For each commit reviewed, two files are generated:
+For each commit reviewed, files are organized in a git-like directory structure:
 
-### 1. `review-inline-<sha>.txt`
+```
+output_dir/
+├── ab/
+│   └── abc123def456789.../
+│       ├── review-inline.txt
+│       ├── review-metadata.json
+│       └── review-pre-verification.json  (optional, for SUSE verification)
+└── cd/
+    └── cdef456789abc123.../
+        ├── review-inline.txt
+        └── review-metadata.json
+```
+
+The directory path is `$OUTPUT_DIR/$ID1/$ID2/` where:
+- `$ID1` = first 2 characters of commit SHA (e.g., "ab")
+- `$ID2` = full commit SHA (e.g., "abc123def456789...")
+
+If a commit directory already exists, the review is skipped (allows resuming interrupted batch reviews).
+
+### 1. `review-inline.txt`
 
 LKML-compliant plain text report with:
 - Commit metadata (SHA, author, subject)
@@ -298,7 +317,7 @@ Can this leak the folio? The allocation is not freed in the error path
 when the function returns early...
 ```
 
-### 2. `review-metadata-<sha>.json`
+### 2. `review-metadata.json`
 
 Structured JSON metadata:
 ```json
@@ -313,6 +332,10 @@ Structured JSON metadata:
 ```
 
 Severity levels: `none`, `low`, `medium`, `high`, `urgent`
+
+### 3. `review-pre-verification.json` (optional)
+
+Generated only when SUSE upstream verification is enabled and finds issues in both upstream and downstream code. Contains all findings before the false-positive verification step, with classification of which findings are present in upstream vs. downstream-only.
 
 ## Architecture
 

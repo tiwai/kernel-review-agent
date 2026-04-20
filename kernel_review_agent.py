@@ -353,9 +353,20 @@ Examples:
                 skipped += 1
                 continue
 
+            # Build output directory path: output_dir/ab/abc123.../
+            sha_short = commit.sha[:12]
+            commit_dir = os.path.join(args.output_dir, commit.sha[:2], commit.sha)
+
+            # Check if commit was already processed (directory exists)
+            if os.path.exists(commit_dir):
+                if args.verbose:
+                    print(f"[{i}/{len(commits)}] Skipping already processed commit {sha_short}...")
+                skipped += 1
+                continue
+
             # Show progress for multiple commits
             if len(commits) > 1 and args.verbose:
-                print(f"[{i}/{len(commits)}] Processing commit {commit.sha[:12]}...")
+                print(f"[{i}/{len(commits)}] Processing commit {sha_short}...")
 
             # Execute review with timing
             start_time = time.time()
@@ -365,14 +376,10 @@ Examples:
             if args.debug:
                 print(f"[DEBUG] Review completed in {elapsed_time:.2f} seconds")
 
-            # Save pre-verification findings if SUSE verification was done
-            sha_short = commit.sha[:12]
-            output_dir = args.output_dir
+            # Create output directory after successful review
+            os.makedirs(commit_dir, exist_ok=True)
 
-            # Create output directory if it doesn't exist
-            if output_dir != "." and not os.path.exists(output_dir):
-                os.makedirs(output_dir)
-
+            # Generate pre-verification metadata if SUSE verification was done
             if result.suse_verification:
                 pre_verification_findings = (
                     result.suse_verification.get('findings_in_upstream', []) +
@@ -386,11 +393,7 @@ Examples:
                         result.suse_verification
                     )
 
-                    pre_verify_path = os.path.join(
-                        output_dir,
-                        f"review-pre-verification-{sha_short}.json"
-                    )
-
+                    pre_verify_path = os.path.join(commit_dir, "review-pre-verification.json")
                     metadata_gen.save_json(pre_verification_metadata, pre_verify_path)
 
                     if args.verbose:
@@ -406,8 +409,9 @@ Examples:
             )
             metadata = metadata_gen.generate(commit, result.findings, elapsed_time=elapsed_time)
 
-            report_path = os.path.join(output_dir, f"review-inline-{sha_short}.txt")
-            metadata_path = os.path.join(output_dir, f"review-metadata-{sha_short}.json")
+            # Write output files to commit directory
+            report_path = os.path.join(commit_dir, "review-inline.txt")
+            metadata_path = os.path.join(commit_dir, "review-metadata.json")
 
             with open(report_path, 'w') as f:
                 f.write(report_text)
