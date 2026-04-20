@@ -339,7 +339,9 @@ Examples:
     successful = 0
     failed = 0
     skipped = 0
-    processed_commits = []  # Track processed commits for LIST file
+
+    # Prepare LIST file path
+    list_path = os.path.join(args.output_dir, "LIST")
 
     # Process each commit
     for i, commit_ref in enumerate(commits, 1):
@@ -415,6 +417,13 @@ Examples:
 
             metadata_gen.save_json(metadata, metadata_path)
 
+            # Append to LIST file immediately
+            try:
+                with open(list_path, 'a') as f:
+                    f.write(f"{commit.sha} {commit.subject}\n")
+            except Exception as e:
+                print(f"Warning: Failed to write to LIST file: {e}", file=sys.stderr)
+
             # Print summary
             print(f"✓ Commit {sha_short}: {commit.subject}")
             print(f"  Issues found: {len(result.findings)}")
@@ -424,7 +433,6 @@ Examples:
             print()
 
             successful += 1
-            processed_commits.append((commit.sha, commit.subject))
 
         except RuntimeError as e:
             # RuntimeError includes our timeout and connection errors
@@ -473,19 +481,9 @@ Examples:
             print(f"  ✗ {failed} failed")
         if skipped > 0:
             print(f"  ⊘ {skipped} skipped")
+        if successful > 0:
+            print(f"  Processed commits list: {list_path}")
         print("=" * 70)
-
-    # Write LIST file with processed commits
-    if processed_commits:
-        list_path = os.path.join(args.output_dir, "LIST")
-        try:
-            with open(list_path, 'w') as f:
-                for sha, subject in processed_commits:
-                    f.write(f"{sha} {subject}\n")
-            if args.verbose:
-                print(f"Processed commits list written to: {list_path}")
-        except Exception as e:
-            print(f"Warning: Failed to write LIST file: {e}", file=sys.stderr)
 
     # Return error code if all commits failed
     if successful == 0 and (failed > 0 or skipped == len(commits)):

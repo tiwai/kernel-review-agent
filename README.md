@@ -316,7 +316,7 @@ Severity levels: `none`, `low`, `medium`, `high`, `urgent`
 
 ### 3. `LIST`
 
-When processing multiple commits, a `LIST` file is generated containing all successfully processed commits:
+When processing commits, a `LIST` file is generated and updated incrementally as each commit is successfully processed:
 ```
 abc123def456789 mm: fix use-after-free in page reclaim
 def456789abc123 net: check socket state before free
@@ -325,7 +325,7 @@ def456789abc123 net: check socket state before free
 
 Format: `<full-sha> <commit-subject>` (one per line, in processing order)
 
-This file is similar to `git log --pretty=oneline` output but only includes commits that were successfully processed (skipped merge commits and failed commits are excluded).
+This file is similar to `git log --pretty=oneline` output but only includes commits that were successfully processed (skipped merge commits and failed commits are excluded). The file is updated immediately after each commit is processed, so it will contain partial results if the program is interrupted.
 
 ## Architecture
 
