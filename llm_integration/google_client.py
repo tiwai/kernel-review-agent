@@ -6,11 +6,11 @@ import sys
 from typing import List, Dict, Optional, Any
 
 try:
-    import vertexai
-    from vertexai.generative_models import GenerativeModel
-    VERTEXAI_AVAILABLE = True
+    from google import genai
+    from google.genai import types as genai_types
+    GENAI_AVAILABLE = True
 except ImportError:
-    VERTEXAI_AVAILABLE = False
+    GENAI_AVAILABLE = False
 
 import config
 from .base_client import LLMClient
@@ -42,10 +42,10 @@ class GoogleClient(LLMClient):
             dump_prompts: Dump prompts and responses to files
             dump_dir: Directory for prompt/response dumps
         """
-        if not VERTEXAI_AVAILABLE:
+        if not GENAI_AVAILABLE:
             raise RuntimeError(
-                "google-cloud-aiplatform package not installed. "
-                "Install with: pip install google-cloud-aiplatform"
+                "google-genai package not installed. "
+                "Install with: pip install google-genai"
             )
 
         super().__init__(model, verbose, debug, dump_prompts, dump_dir)
@@ -67,13 +67,17 @@ class GoogleClient(LLMClient):
                 print(f"[DEBUG] Created dump directory: {self.dump_dir}")
 
         try:
-            vertexai.init(project=self.project_id, location=self.location)
-            self.client = GenerativeModel(self.model)
+            # Create GenAI client with Vertex AI backend
+            self.client = genai.Client(
+                vertexai=True,
+                project=self.project_id,
+                location=self.location
+            )
         except Exception as e:
-            raise RuntimeError(f"Failed to initialize Google Vertex AI client: {e}")
+            raise RuntimeError(f"Failed to initialize Google GenAI client: {e}")
 
         if self.debug:
-            print(f"[DEBUG] Google Vertex AI client initialized")
+            print(f"[DEBUG] Google GenAI client initialized (Vertex AI backend)")
             print(f"[DEBUG] Project: {self.project_id}, Location: {self.location}")
             print(f"[DEBUG] Using model: {self.model}")
 
@@ -143,13 +147,6 @@ class GoogleClient(LLMClient):
         if self.dump_prompts:
             self._dump_prompt(call_id, prompt, max_tokens, temperature)
 
-        # Configure generation parameters
-        generation_config = {
-            'max_output_tokens': max_tokens,
-        }
-        if temperature is not None:
-            generation_config['temperature'] = temperature
-
         for attempt in range(config.MAX_RETRIES):
             try:
                 if self.verbose and attempt > 0:
@@ -160,9 +157,20 @@ class GoogleClient(LLMClient):
                     print(f"[DEBUG] Google call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temp_str}")
                     print(f"[DEBUG] Prompt length: {len(prompt)} chars")
 
-                response = self.client.generate_content(
-                    prompt,
-                    generation_config=generation_config
+                # Build generation config
+                config_dict = {
+                    'max_output_tokens': max_tokens,
+                }
+                if temperature is not None:
+                    config_dict['temperature'] = temperature
+
+                gen_config = genai_types.GenerateContentConfig(**config_dict)
+
+                # Call generate_content with the new API
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=gen_config
                 )
 
                 response_text = response.text

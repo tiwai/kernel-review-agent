@@ -59,7 +59,7 @@ pip install anthropic
 pip install 'anthropic[vertex]'
 
 # For Google Vertex AI (Gemini)
-pip install google-cloud-aiplatform
+pip install google-genai
 ```
 
 See [INSTALL.md](INSTALL.md) for all installation methods (system-wide, user, pip, development).
@@ -90,7 +90,7 @@ This is useful for:
   - **Ollama** - local LLM server - uses `openai` package
   - **Anthropic Claude API** - requires `anthropic` package and API key
   - **Claude on Google Vertex AI** - requires `anthropic[vertex]` package and GCP project
-  - **Google Vertex AI (Gemini)** - requires `google-cloud-aiplatform` package and GCP project
+  - **Google Vertex AI (Gemini)** - requires `google-genai` package and GCP project
 - **Linux kernel git tree** (run from within a kernel repository)
 
 ## Usage
