@@ -249,13 +249,14 @@ python kernel_review_agent.py HEAD --suse-kernel-source /path/to/kernel-source
 - When reviewing a downstream kernel commit with a `suse-commit:` tag and short message (< 10 lines)
 - The agent looks up the corresponding kernel-source commit
 - If that commit creates a patch in `patches.suse/` or `patches.kabi/`
-- The detailed patch description (with full explanation, upstream commit reference, etc.) is used for review
+- The detailed patch description is extracted and included in all LLM prompts
 - This provides much richer context than the minimal downstream commit message
 
 **Benefits:**
+- **Better LLM understanding**: Patch description (problem explanation, fix rationale, Fixes: tags) is passed to the LLM for all review stages
 - More accurate analysis with complete problem description
 - Upstream commit references automatically extracted
-- Better understanding of the fix rationale
+- Better distinction between intentional fixes and potential regressions
 - No manual lookup of patch files needed
 
 **Example:**

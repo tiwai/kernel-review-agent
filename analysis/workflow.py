@@ -237,6 +237,11 @@ class ReviewWorkflow:
         # Build prompt for categorization
         system_prompt = self.prompts.load_review_core()
 
+        # Build commit context with message if available
+        commit_context = f"Subject: {commit.subject}"
+        if commit.message and commit.message.strip() and commit.message != commit.subject:
+            commit_context += f"\n\nCommit message:\n{commit.message}"
+
         user_prompt = f"""Analyze this commit and categorize the changes.
 
 For each distinct change, create a category with:
@@ -245,7 +250,7 @@ For each distinct change, create a category with:
 - description: Brief description of what changed
 - location: File and function name
 
-Commit: {commit.subject}
+{commit_context}
 
 Diff:
 {commit.diff}
@@ -298,9 +303,14 @@ Return ONLY a JSON array of changes, no other text:
         # Build user prompt with categorized changes
         categories_text = json.dumps(categories, indent=2)
 
+        # Build commit context with message if available
+        commit_context = f"Subject: {commit.subject}"
+        if commit.message and commit.message.strip() and commit.message != commit.subject:
+            commit_context += f"\n\nCommit message:\n{commit.message}"
+
         user_prompt = f"""Analyze this commit for potential regressions.
 
-Commit: {commit.subject}
+{commit_context}
 
 Categories of changes:
 {categories_text}
@@ -373,12 +383,19 @@ If no issues found, return: []
 
         findings_text = json.dumps(findings, indent=2)
 
+        # Build commit context with message if available
+        commit_context = f"Subject: {commit.subject}"
+        if commit.message and commit.message.strip() and commit.message != commit.subject:
+            commit_context += f"\n\nCommit message:\n{commit.message}"
+
         user_prompt = f"""Verify these findings against the false-positive prevention guide.
 
 For each finding, check:
 1. Is there concrete evidence this can happen?
 2. Is this defensive programming vs. a real bug?
 3. Are all assumptions verified with code?
+
+{commit_context}
 
 Commit diff:
 {commit.diff}
