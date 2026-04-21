@@ -13,7 +13,8 @@ class MetadataGenerator:
         commit: Commit,
         findings: List[Dict],
         elapsed_time: float = None,
-        is_patch: bool = False
+        is_patch: bool = False,
+        model_name: str = None
     ) -> Dict:
         """
         Generate metadata JSON.
@@ -23,6 +24,7 @@ class MetadataGenerator:
             findings: List of findings
             elapsed_time: Optional elapsed time in seconds
             is_patch: True if reviewing a patch file (omits SHA field)
+            model_name: Optional LLM model name used for review
 
         Returns:
             Metadata dictionary
@@ -47,6 +49,10 @@ class MetadataGenerator:
         # Include elapsed time if provided
         if elapsed_time is not None:
             metadata["review-time-seconds"] = round(elapsed_time, 2)
+
+        # Include model name if provided
+        if model_name is not None:
+            metadata["model"] = model_name
 
         # Include SUSE commit IDs if present (not in patch mode)
         if not is_patch and commit.suse_commit:

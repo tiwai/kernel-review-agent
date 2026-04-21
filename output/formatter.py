@@ -25,7 +25,8 @@ class ReportFormatter:
         summary: str = None,
         suse_verification: Dict = None,
         elapsed_time: float = None,
-        is_patch: bool = False
+        is_patch: bool = False,
+        model_name: str = None
     ) -> str:
         """
         Format review findings as LKML-compliant plain text.
@@ -37,6 +38,7 @@ class ReportFormatter:
             suse_verification: Optional SUSE upstream verification result
             elapsed_time: Optional elapsed time in seconds
             is_patch: True if reviewing a patch file (omits commit SHA)
+            model_name: Optional LLM model name used for review
 
         Returns:
             Formatted plain text report
@@ -104,6 +106,11 @@ class ReportFormatter:
         # Processing time (if provided)
         if elapsed_time is not None:
             lines.append(f"Review-time: {elapsed_time:.2f} seconds")
+            lines.append("")
+
+        # Model name (if provided)
+        if model_name is not None:
+            lines.append(f"Review-model: {model_name}")
             lines.append("")
 
         # If no findings, end here

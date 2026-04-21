@@ -435,9 +435,10 @@ Examples:
                     summary=result.summary,
                     suse_verification=result.suse_verification,
                     elapsed_time=elapsed_time,
-                    is_patch=True  # Flag for patch mode formatting
+                    is_patch=True,  # Flag for patch mode formatting
+                    model_name=args.model
                 )
-                metadata = metadata_gen.generate(commit, result.findings, elapsed_time=elapsed_time, is_patch=True)
+                metadata = metadata_gen.generate(commit, result.findings, elapsed_time=elapsed_time, is_patch=True, model_name=args.model)
 
                 # Write output files to output directory (flat structure for patches)
                 report_path = os.path.join(args.output_dir, "review-inline.txt")
@@ -532,9 +533,10 @@ Examples:
                     result.findings,
                     summary=result.summary,
                     suse_verification=result.suse_verification,
-                    elapsed_time=elapsed_time
+                    elapsed_time=elapsed_time,
+                    model_name=args.model
                 )
-                metadata = metadata_gen.generate(commit, result.findings, elapsed_time=elapsed_time)
+                metadata = metadata_gen.generate(commit, result.findings, elapsed_time=elapsed_time, model_name=args.model)
 
                 # Write output files to commit directory
                 report_path = os.path.join(commit_dir, "review-inline.txt")

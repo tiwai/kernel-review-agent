@@ -391,6 +391,7 @@ output_dir/
 LKML-compliant plain text report with:
 - Commit metadata (SHA, author, subject)
 - Summary of findings
+- Review metadata (time, model)
 - Quoted diff with inline comments
 - Detailed analysis of each issue
 
@@ -402,6 +403,10 @@ Author: Jane Developer <jane@example.com>
 mm: fix use-after-free in page reclaim
 
 This commit has a potential memory-leak that should be reviewed.
+
+Review-time: 45.32 seconds
+
+Review-model: gpt-4
 
 > diff --git a/mm/vmscan.c b/mm/vmscan.c
 > --- a/mm/vmscan.c
@@ -423,11 +428,21 @@ Structured JSON metadata:
   "subject": "mm: fix use-after-free in page reclaim",
   "issues-found": 1,
   "issue-severity-score": "medium",
-  "issue-severity-explanation": "1 issue found that should be fixed"
+  "issue-severity-explanation": "1 issue found that should be fixed",
+  "review-time-seconds": 45.32,
+  "model": "gpt-4"
 }
 ```
 
-Severity levels: `none`, `low`, `medium`, `high`, `urgent`
+**Fields:**
+- `author`, `sha`, `subject`: Commit metadata
+- `issues-found`: Number of potential issues found
+- `issue-severity-score`: Severity level (`none`, `low`, `medium`, `high`, `urgent`)
+- `issue-severity-explanation`: Human-readable severity description
+- `review-time-seconds`: Time taken to complete the review (optional)
+- `model`: LLM model name used for the review (optional)
+- `suse-commit`: SUSE kernel-source commit SHA (optional, SUSE downstream only)
+- `upstream-commit`: Upstream commit SHA (optional, if available)
 
 ### 3. `review-pre-verification.json` (optional)
 
