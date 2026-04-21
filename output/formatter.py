@@ -24,7 +24,8 @@ class ReportFormatter:
         findings: List[Dict],
         summary: str = None,
         suse_verification: Dict = None,
-        elapsed_time: float = None
+        elapsed_time: float = None,
+        is_patch: bool = False
     ) -> str:
         """
         Format review findings as LKML-compliant plain text.
@@ -35,14 +36,16 @@ class ReportFormatter:
             summary: Optional 1-2 sentence summary
             suse_verification: Optional SUSE upstream verification result
             elapsed_time: Optional elapsed time in seconds
+            is_patch: True if reviewing a patch file (omits commit SHA)
 
         Returns:
             Formatted plain text report
         """
         lines = []
 
-        # Header: commit SHA
-        lines.append(f"commit {commit.sha}")
+        # Header: commit SHA (omit for patches)
+        if not is_patch:
+            lines.append(f"commit {commit.sha}")
 
         # Author line
         lines.append(f"Author: {commit.author}")
@@ -52,12 +55,18 @@ class ReportFormatter:
         lines.append(commit.subject)
         lines.append("")
 
-        # SUSE commit information (if present)
-        if commit.suse_commit or commit.upstream_commit:
-            if commit.suse_commit:
-                lines.append(f"suse-commit: {commit.suse_commit}")
+        # Git-commit tag (if present in patch, skip suse-commit in patch mode)
+        if is_patch:
             if commit.upstream_commit:
                 lines.append(f"Git-commit: {commit.upstream_commit}")
+                lines.append("")
+        else:
+            # SUSE commit information (if present in commit mode)
+            if commit.suse_commit or commit.upstream_commit:
+                if commit.suse_commit:
+                    lines.append(f"suse-commit: {commit.suse_commit}")
+                if commit.upstream_commit:
+                    lines.append(f"Git-commit: {commit.upstream_commit}")
             lines.append("")
 
         # Verified upstream commit (if SUSE verification was performed)

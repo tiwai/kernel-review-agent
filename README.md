@@ -117,6 +117,31 @@ python kernel_review_agent.py HEAD abc123 def456
 python kernel_review_agent.py HEAD~5..HEAD~3 HEAD~1..HEAD
 ```
 
+### Patch Mode
+
+Review patch files instead of commits:
+
+```bash
+# Review single patch file
+python kernel_review_agent.py --patch my-changes.patch
+
+# Review multiple patches
+python kernel_review_agent.py --patch *.patch --output-dir ./reviews/
+```
+
+**Patch mode behavior:**
+- Arguments are treated as patch file paths (not commit SHAs)
+- Patch is analyzed as if applied on top of current HEAD
+- Output files are flat: `review-inline.txt` and `review-metadata.json` in output directory
+- SUSE kernel-source verification is skipped
+- If patch contains `Git-commit:` tag, upstream commit is checked
+- Commit SHA and SUSE-commit fields are omitted from output
+
+**Supported patch formats:**
+- Git format-patch output (with headers)
+- Plain unified diff files
+- Patches with `Git-commit:` tag for upstream reference
+
 ### LLM Provider Options
 
 The agent supports multiple LLM providers:
@@ -290,6 +315,8 @@ The dump files are useful for:
 
 ## Output Files
 
+### Commit Mode (default)
+
 For each commit reviewed, files are organized in a git-like directory structure:
 
 ```
@@ -310,6 +337,22 @@ The directory path is `$OUTPUT_DIR/$ID1/$ID2/` where:
 - `$ID2` = full commit SHA (e.g., "abc123def456789...")
 
 **Resumability**: If a commit directory already exists, the review is skipped (allows resuming interrupted batch reviews). Use `--force` to override and re-review existing commits.
+
+### Patch Mode (`--patch`)
+
+For patch files, output is flat (no subdirectories):
+
+```
+output_dir/
+├── review-inline.txt
+└── review-metadata.json
+```
+
+**Differences from commit mode:**
+- No commit SHA field in metadata (since there's no actual commit)
+- No SUSE-commit field (SUSE verification skipped in patch mode)
+- `upstream-commit` field included if `Git-commit:` tag found in patch
+- Files written directly to output directory
 
 ### 1. `review-inline.txt`
 

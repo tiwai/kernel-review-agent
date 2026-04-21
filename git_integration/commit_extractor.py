@@ -185,6 +185,82 @@ class CommitExtractor:
                 files.append(match.group(1))
         return files
 
+    def from_patch_file(self, patch_path: str) -> Commit:
+        """
+        Parse a patch file and create a Commit object.
+
+        Args:
+            patch_path: Path to patch file
+
+        Returns:
+            Commit object with metadata and diff
+        """
+        with open(patch_path, 'r') as f:
+            patch_content = f.read()
+
+        # Parse patch headers and content
+        lines = patch_content.split('\n')
+
+        author = "Unknown"
+        date = "Unknown"
+        subject = "No subject"
+        message_lines = []
+        diff_start = 0
+
+        # Parse headers
+        in_message = False
+        for i, line in enumerate(lines):
+            # Extract author (From: or Author:)
+            if line.startswith('From:') or line.startswith('Author:'):
+                author = line.split(':', 1)[1].strip()
+            # Extract date
+            elif line.startswith('Date:'):
+                date = line.split(':', 1)[1].strip()
+            # Subject line
+            elif line.startswith('Subject:'):
+                subject = line.split(':', 1)[1].strip()
+                # Remove [PATCH] prefix if present
+                subject = re.sub(r'^\[PATCH[^\]]*\]\s*', '', subject)
+                in_message = True
+            # Start of diff
+            elif line.startswith('diff --git') or line.startswith('---'):
+                diff_start = i
+                break
+            # Message body
+            elif in_message and line.strip():
+                message_lines.append(line)
+
+        # Extract message and diff
+        message = '\n'.join(message_lines).strip()
+        diff = '\n'.join(lines[diff_start:]).strip() if diff_start > 0 else patch_content
+
+        # If no headers found, treat entire content as diff
+        if not diff and patch_content.strip():
+            diff = patch_content.strip()
+
+        # Extract files from diff
+        files = self._extract_files_from_diff(diff)
+
+        # Extract Git-commit tag if present in the patch
+        git_commit_sha = self.extract_tag(patch_content, 'Git-commit')
+
+        # Create pseudo-commit object for patch
+        # Use patch filename as pseudo-SHA
+        import os
+        pseudo_sha = os.path.basename(patch_path)
+
+        return Commit(
+            sha=pseudo_sha,
+            author=author,
+            date=date,
+            subject=subject,
+            message=message,
+            diff=diff,
+            files=files,
+            suse_commit=None,  # No suse-commit for patches
+            upstream_commit=git_commit_sha
+        )
+
 
 class MultiRepoExtractor:
     """Handle git operations across multiple repositories."""

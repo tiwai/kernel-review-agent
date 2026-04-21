@@ -66,13 +66,25 @@ Examples:
 
   # Review multiple ranges
   %(prog)s HEAD~5..HEAD~3 HEAD~1..HEAD --output-dir ./reviews/
+
+  # Review patch file
+  %(prog)s --patch my-changes.patch --output-dir ./reviews/
+
+  # Review multiple patches
+  %(prog)s --patch patch1.patch patch2.patch --output-dir ./reviews/
         """
     )
 
     parser.add_argument(
         "commit",
         nargs='+',
-        help="Commit SHA(s) or range(s) (e.g., abc123, HEAD~5..HEAD, or multiple: HEAD abc123 def456)"
+        help="Commit SHA(s), range(s), or patch file(s) (e.g., abc123, HEAD~5..HEAD, or with --patch: file.patch)"
+    )
+
+    parser.add_argument(
+        "--patch",
+        action="store_true",
+        help="Treat arguments as patch files instead of commit references"
     )
 
     parser.add_argument(
@@ -296,31 +308,32 @@ Examples:
 
     matcher = SubsystemMatcher()
 
-    # Initialize SUSE verifier if configured
+    # Initialize SUSE verifier if configured (skip in patch mode)
     suse_verifier = None
-    suse_kernel_source = args.suse_kernel_source or config.SUSE_KERNEL_SOURCE_REPO
-    upstream_linux = args.upstream_linux or config.UPSTREAM_LINUX_REPO
+    if not args.patch:
+        suse_kernel_source = args.suse_kernel_source or config.SUSE_KERNEL_SOURCE_REPO
+        upstream_linux = args.upstream_linux or config.UPSTREAM_LINUX_REPO
 
-    if suse_kernel_source:
-        if args.debug:
-            print(f"[DEBUG] Initializing SUSE verifier")
-            print(f"[DEBUG]   kernel-source: {suse_kernel_source}")
-            print(f"[DEBUG]   upstream: {upstream_linux}")
+        if suse_kernel_source:
+            if args.debug:
+                print(f"[DEBUG] Initializing SUSE verifier")
+                print(f"[DEBUG]   kernel-source: {suse_kernel_source}")
+                print(f"[DEBUG]   upstream: {upstream_linux}")
 
-        from analysis import SuseUpstreamVerifier
-        suse_verifier = SuseUpstreamVerifier(
-            kernel_source_repo=suse_kernel_source,
-            upstream_repo=upstream_linux,
-            verbose=args.verbose,
-            debug=args.debug
-        )
+            from analysis import SuseUpstreamVerifier
+            suse_verifier = SuseUpstreamVerifier(
+                kernel_source_repo=suse_kernel_source,
+                upstream_repo=upstream_linux,
+                verbose=args.verbose,
+                debug=args.debug
+            )
 
-        if not suse_verifier.is_enabled():
-            print(f"Warning: SUSE kernel-source repository not available: {suse_kernel_source}",
-                  file=sys.stderr)
-            suse_verifier = None
-        elif args.verbose:
-            print(f"SUSE upstream verification enabled")
+            if not suse_verifier.is_enabled():
+                print(f"Warning: SUSE kernel-source repository not available: {suse_kernel_source}",
+                      file=sys.stderr)
+                suse_verifier = None
+            elif args.verbose:
+                print(f"SUSE upstream verification enabled")
 
     workflow = ReviewWorkflow(
         llm,
@@ -334,150 +347,223 @@ Examples:
     formatter = ReportFormatter()
     metadata_gen = MetadataGenerator()
 
-    # Expand all commit arguments
-    commits = []
-    for commit_arg in args.commit:
-        try:
-            expanded = git.expand_range(commit_arg)
-            commits.extend(expanded)
-        except Exception as e:
-            print(f"Error: Invalid commit or range: {commit_arg}", file=sys.stderr)
-            print(f"Details: {e}", file=sys.stderr)
-            return 1
+    # Process arguments: either patch files or commit references
+    if args.patch:
+        # Patch mode: arguments are patch files
+        patch_files = args.commit
+        if args.verbose:
+            print(f"Processing {len(patch_files)} patch file(s)...\n")
+    else:
+        # Commit mode: expand all commit arguments
+        commits = []
+        for commit_arg in args.commit:
+            try:
+                expanded = git.expand_range(commit_arg)
+                commits.extend(expanded)
+            except Exception as e:
+                print(f"Error: Invalid commit or range: {commit_arg}", file=sys.stderr)
+                print(f"Details: {e}", file=sys.stderr)
+                return 1
 
-    if args.verbose:
-        print(f"Processing {len(commits)} commit(s)...\n")
+        if args.verbose:
+            print(f"Processing {len(commits)} commit(s)...\n")
 
     # Track results
     successful = 0
     failed = 0
     skipped = 0
 
-    # Process each commit
-    for i, commit_ref in enumerate(commits, 1):
-        try:
-            # Extract commit
-            commit = git.get_commit(commit_ref)
+    # Patch mode: process patch files
+    if args.patch:
+        for i, patch_file in enumerate(patch_files, 1):
+            try:
+                # Parse patch file
+                if not os.path.exists(patch_file):
+                    print(f"Error: Patch file not found: {patch_file}", file=sys.stderr)
+                    failed += 1
+                    continue
 
-            # Skip merge commits (too complex)
-            if len(commit.diff.split('\n')) < 5 or "Merge:" in commit.message:
                 if args.verbose:
-                    print(f"Skipping merge commit {commit.sha[:12]}")
-                skipped += 1
-                continue
+                    print(f"[{i}/{len(patch_files)}] Processing patch {patch_file}...")
 
-            # Build output directory path: output_dir/ab/abc123.../
-            sha_short = commit.sha[:12]
-            commit_dir = os.path.join(args.output_dir, commit.sha[:2], commit.sha)
+                commit = git.from_patch_file(patch_file)
 
-            # Check if commit was already processed (directory exists), unless --force
-            if not args.force and os.path.exists(commit_dir):
-                if args.verbose:
-                    print(f"[{i}/{len(commits)}] Skipping already processed commit {sha_short}...")
-                skipped += 1
-                continue
+                # Execute review with timing
+                start_time = time.time()
+                result = workflow.execute_review(commit)
+                elapsed_time = time.time() - start_time
 
-            # Show progress for multiple commits
-            if len(commits) > 1 and args.verbose:
-                print(f"[{i}/{len(commits)}] Processing commit {sha_short}...")
+                if args.debug:
+                    print(f"[DEBUG] Review completed in {elapsed_time:.2f} seconds")
 
-            # Execute review with timing
-            start_time = time.time()
-            result = workflow.execute_review(commit)
-            elapsed_time = time.time() - start_time
+                # Create output directory if needed
+                if args.output_dir != "." and not os.path.exists(args.output_dir):
+                    os.makedirs(args.output_dir)
 
-            if args.debug:
-                print(f"[DEBUG] Review completed in {elapsed_time:.2f} seconds")
-
-            # Create output directory after successful review
-            os.makedirs(commit_dir, exist_ok=True)
-
-            # Generate pre-verification metadata if SUSE verification was done
-            if result.suse_verification:
-                pre_verification_findings = (
-                    result.suse_verification.get('findings_in_upstream', []) +
-                    result.suse_verification.get('findings_only_downstream', [])
+                # Generate outputs
+                report_text = formatter.format_report(
+                    commit,
+                    result.findings,
+                    summary=result.summary,
+                    suse_verification=result.suse_verification,
+                    elapsed_time=elapsed_time,
+                    is_patch=True  # Flag for patch mode formatting
                 )
+                metadata = metadata_gen.generate(commit, result.findings, elapsed_time=elapsed_time, is_patch=True)
 
-                if pre_verification_findings:
-                    pre_verification_metadata = metadata_gen.generate_pre_verification_metadata(
-                        commit,
-                        pre_verification_findings,
-                        result.suse_verification
+                # Write output files to output directory (flat structure for patches)
+                report_path = os.path.join(args.output_dir, "review-inline.txt")
+                metadata_path = os.path.join(args.output_dir, "review-metadata.json")
+
+                with open(report_path, 'w') as f:
+                    f.write(report_text)
+
+                metadata_gen.save_json(metadata, metadata_path)
+
+                # Print summary
+                print(f"✓ Patch {patch_file}: {commit.subject}")
+                print(f"  Issues found: {len(result.findings)}")
+                print(f"  Severity: {metadata['issue-severity-score']}")
+                print(f"  Report: {report_path}")
+                print(f"  Metadata: {metadata_path}")
+                print()
+
+                successful += 1
+
+            except Exception as e:
+                print(f"✗ Error processing patch {patch_file}: {e}", file=sys.stderr)
+                if args.debug:
+                    import traceback
+                    traceback.print_exc()
+                failed += 1
+                continue
+
+    # Commit mode: process commits
+    elif not args.patch:
+        for i, commit_ref in enumerate(commits, 1):
+            try:
+                # Extract commit
+                commit = git.get_commit(commit_ref)
+
+                # Skip merge commits (too complex)
+                if len(commit.diff.split('\n')) < 5 or "Merge:" in commit.message:
+                    if args.verbose:
+                        print(f"Skipping merge commit {commit.sha[:12]}")
+                    skipped += 1
+                    continue
+
+                # Build output directory path: output_dir/ab/abc123.../
+                sha_short = commit.sha[:12]
+                commit_dir = os.path.join(args.output_dir, commit.sha[:2], commit.sha)
+
+                # Check if commit was already processed (directory exists), unless --force
+                if not args.force and os.path.exists(commit_dir):
+                    if args.verbose:
+                        print(f"[{i}/{len(commits)}] Skipping already processed commit {sha_short}...")
+                    skipped += 1
+                    continue
+
+                # Show progress for multiple commits
+                if len(commits) > 1 and args.verbose:
+                    print(f"[{i}/{len(commits)}] Processing commit {sha_short}...")
+
+                # Execute review with timing
+                start_time = time.time()
+                result = workflow.execute_review(commit)
+                elapsed_time = time.time() - start_time
+
+                if args.debug:
+                    print(f"[DEBUG] Review completed in {elapsed_time:.2f} seconds")
+
+                # Create output directory after successful review
+                os.makedirs(commit_dir, exist_ok=True)
+
+                # Generate pre-verification metadata if SUSE verification was done
+                if result.suse_verification:
+                    pre_verification_findings = (
+                        result.suse_verification.get('findings_in_upstream', []) +
+                        result.suse_verification.get('findings_only_downstream', [])
                     )
 
-                    pre_verify_path = os.path.join(commit_dir, "review-pre-verification.json")
-                    metadata_gen.save_json(pre_verification_metadata, pre_verify_path)
+                    if pre_verification_findings:
+                        pre_verification_metadata = metadata_gen.generate_pre_verification_metadata(
+                            commit,
+                            pre_verification_findings,
+                            result.suse_verification
+                        )
 
-                    if args.verbose:
-                        print(f"  Pre-verification findings saved: {pre_verify_path}")
+                        pre_verify_path = os.path.join(commit_dir, "review-pre-verification.json")
+                        metadata_gen.save_json(pre_verification_metadata, pre_verify_path)
 
-            # Generate outputs
-            report_text = formatter.format_report(
-                commit,
-                result.findings,
-                summary=result.summary,
-                suse_verification=result.suse_verification,
-                elapsed_time=elapsed_time
-            )
-            metadata = metadata_gen.generate(commit, result.findings, elapsed_time=elapsed_time)
+                        if args.verbose:
+                            print(f"  Pre-verification findings saved: {pre_verify_path}")
 
-            # Write output files to commit directory
-            report_path = os.path.join(commit_dir, "review-inline.txt")
-            metadata_path = os.path.join(commit_dir, "review-metadata.json")
+                # Generate outputs
+                report_text = formatter.format_report(
+                    commit,
+                    result.findings,
+                    summary=result.summary,
+                    suse_verification=result.suse_verification,
+                    elapsed_time=elapsed_time
+                )
+                metadata = metadata_gen.generate(commit, result.findings, elapsed_time=elapsed_time)
 
-            with open(report_path, 'w') as f:
-                f.write(report_text)
+                # Write output files to commit directory
+                report_path = os.path.join(commit_dir, "review-inline.txt")
+                metadata_path = os.path.join(commit_dir, "review-metadata.json")
 
-            metadata_gen.save_json(metadata, metadata_path)
+                with open(report_path, 'w') as f:
+                    f.write(report_text)
 
-            # Print summary
-            print(f"✓ Commit {sha_short}: {commit.subject}")
-            print(f"  Issues found: {len(result.findings)}")
-            print(f"  Severity: {metadata['issue-severity-score']}")
-            print(f"  Report: {report_path}")
-            print(f"  Metadata: {metadata_path}")
-            print()
+                metadata_gen.save_json(metadata, metadata_path)
 
-            successful += 1
+                # Print summary
+                print(f"✓ Commit {sha_short}: {commit.subject}")
+                print(f"  Issues found: {len(result.findings)}")
+                print(f"  Severity: {metadata['issue-severity-score']}")
+                print(f"  Report: {report_path}")
+                print(f"  Metadata: {metadata_path}")
+                print()
 
-        except RuntimeError as e:
-            # RuntimeError includes our timeout and connection errors
-            error_msg = str(e)
-            print(f"✗ Error processing commit {commit_ref}:", file=sys.stderr)
-            print(f"  {error_msg}", file=sys.stderr)
+                successful += 1
 
-            # For timeout errors, suggest solutions
-            if "timed out" in error_msg.lower():
-                print(f"  Suggestion: Increase LLM_TIMEOUT in config.py (current: {config.LLM_TIMEOUT}s)", file=sys.stderr)
-            elif "connect" in error_msg.lower():
-                print(f"  Suggestion: Ensure LLM server is running at {args.host}:{args.port}", file=sys.stderr)
+            except RuntimeError as e:
+                # RuntimeError includes our timeout and connection errors
+                error_msg = str(e)
+                print(f"✗ Error processing commit {commit_ref}:", file=sys.stderr)
+                print(f"  {error_msg}", file=sys.stderr)
 
-            print(file=sys.stderr)
+                # For timeout errors, suggest solutions
+                if "timed out" in error_msg.lower():
+                    print(f"  Suggestion: Increase LLM_TIMEOUT in config.py (current: {config.LLM_TIMEOUT}s)", file=sys.stderr)
+                elif "connect" in error_msg.lower():
+                    print(f"  Suggestion: Ensure LLM server is running at {args.host}:{args.port}", file=sys.stderr)
 
-            if args.debug:
-                import traceback
-                traceback.print_exc()
+                print(file=sys.stderr)
 
-            failed += 1
+                if args.debug:
+                    import traceback
+                    traceback.print_exc()
 
-            # Continue with next commit
-            if len(commits) > 1:
-                print(f"Continuing with next commit...\n", file=sys.stderr)
-            continue
+                failed += 1
 
-        except Exception as e:
-            print(f"✗ Unexpected error processing commit {commit_ref}: {e}", file=sys.stderr)
-            if args.debug:
-                import traceback
-                traceback.print_exc()
+                # Continue with next commit
+                if len(commits) > 1:
+                    print(f"Continuing with next commit...\n", file=sys.stderr)
+                continue
 
-            failed += 1
+            except Exception as e:
+                print(f"✗ Unexpected error processing commit {commit_ref}: {e}", file=sys.stderr)
+                if args.debug:
+                    import traceback
+                    traceback.print_exc()
 
-            # Continue with next commit
-            if len(commits) > 1:
-                print(f"Continuing with next commit...\n", file=sys.stderr)
-            continue
+                failed += 1
+
+                # Continue with next commit
+                if len(commits) > 1:
+                    print(f"Continuing with next commit...\n", file=sys.stderr)
+                continue
 
     # Print final summary for multiple commits
     if len(commits) > 1:

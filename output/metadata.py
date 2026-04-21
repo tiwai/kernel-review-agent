@@ -12,7 +12,8 @@ class MetadataGenerator:
         self,
         commit: Commit,
         findings: List[Dict],
-        elapsed_time: float = None
+        elapsed_time: float = None,
+        is_patch: bool = False
     ) -> Dict:
         """
         Generate metadata JSON.
@@ -21,6 +22,7 @@ class MetadataGenerator:
             commit: Commit object
             findings: List of findings
             elapsed_time: Optional elapsed time in seconds
+            is_patch: True if reviewing a patch file (omits SHA field)
 
         Returns:
             Metadata dictionary
@@ -32,21 +34,25 @@ class MetadataGenerator:
 
         metadata = {
             "author": commit.author,
-            "sha": commit.sha,
             "subject": commit.subject,
             "issues-found": issues_found,
             "issue-severity-score": severity,
             "issue-severity-explanation": explanation
         }
 
+        # Include commit SHA for commits (not for patches)
+        if not is_patch:
+            metadata["sha"] = commit.sha
+
         # Include elapsed time if provided
         if elapsed_time is not None:
             metadata["review-time-seconds"] = round(elapsed_time, 2)
 
-        # Include SUSE commit IDs if present
-        if commit.suse_commit:
+        # Include SUSE commit IDs if present (not in patch mode)
+        if not is_patch and commit.suse_commit:
             metadata["suse-commit"] = commit.suse_commit
 
+        # Include upstream commit if present
         if commit.upstream_commit:
             metadata["upstream-commit"] = commit.upstream_commit
 
