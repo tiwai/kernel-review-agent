@@ -350,9 +350,10 @@ Examples:
     # Process arguments: either patch files or commit references
     if args.patch:
         # Patch mode: arguments are patch files
-        patch_files = args.commit
+        items_to_process = args.commit
+        total_items = len(items_to_process)
         if args.verbose:
-            print(f"Processing {len(patch_files)} patch file(s)...\n")
+            print(f"Processing {total_items} patch file(s)...\n")
     else:
         # Commit mode: expand all commit arguments
         commits = []
@@ -365,8 +366,10 @@ Examples:
                 print(f"Details: {e}", file=sys.stderr)
                 return 1
 
+        items_to_process = commits
+        total_items = len(commits)
         if args.verbose:
-            print(f"Processing {len(commits)} commit(s)...\n")
+            print(f"Processing {total_items} commit(s)...\n")
 
     # Track results
     successful = 0
@@ -375,7 +378,7 @@ Examples:
 
     # Patch mode: process patch files
     if args.patch:
-        for i, patch_file in enumerate(patch_files, 1):
+        for i, patch_file in enumerate(items_to_process, 1):
             try:
                 # Parse patch file
                 if not os.path.exists(patch_file):
@@ -384,7 +387,7 @@ Examples:
                     continue
 
                 if args.verbose:
-                    print(f"[{i}/{len(patch_files)}] Processing patch {patch_file}...")
+                    print(f"[{i}/{total_items}] Processing patch {patch_file}...")
 
                 commit = git.from_patch_file(patch_file)
 
@@ -440,7 +443,7 @@ Examples:
 
     # Commit mode: process commits
     elif not args.patch:
-        for i, commit_ref in enumerate(commits, 1):
+        for i, commit_ref in enumerate(items_to_process, 1):
             try:
                 # Extract commit
                 commit = git.get_commit(commit_ref)
@@ -464,8 +467,8 @@ Examples:
                     continue
 
                 # Show progress for multiple commits
-                if len(commits) > 1 and args.verbose:
-                    print(f"[{i}/{len(commits)}] Processing commit {sha_short}...")
+                if total_items > 1 and args.verbose:
+                    print(f"[{i}/{total_items}] Processing commit {sha_short}...")
 
                 # Execute review with timing
                 start_time = time.time()
@@ -548,7 +551,7 @@ Examples:
                 failed += 1
 
                 # Continue with next commit
-                if len(commits) > 1:
+                if total_items > 1:
                     print(f"Continuing with next commit...\n", file=sys.stderr)
                 continue
 
@@ -561,14 +564,15 @@ Examples:
                 failed += 1
 
                 # Continue with next commit
-                if len(commits) > 1:
+                if total_items > 1:
                     print(f"Continuing with next commit...\n", file=sys.stderr)
                 continue
 
-    # Print final summary for multiple commits
-    if len(commits) > 1:
+    # Print final summary for multiple items
+    if total_items > 1:
+        item_type = "patches" if args.patch else "commits"
         print("=" * 70)
-        print(f"Summary: {len(commits)} total commits")
+        print(f"Summary: {total_items} total {item_type}")
         print(f"  ✓ {successful} successful")
         if failed > 0:
             print(f"  ✗ {failed} failed")
@@ -576,8 +580,8 @@ Examples:
             print(f"  ⊘ {skipped} skipped")
         print("=" * 70)
 
-    # Return error code if all commits failed
-    if successful == 0 and (failed > 0 or skipped == len(commits)):
+    # Return error code if all items failed
+    if successful == 0 and (failed > 0 or skipped == total_items):
         return 1
 
     return 0
