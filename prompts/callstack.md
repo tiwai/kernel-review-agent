@@ -94,44 +94,51 @@ load them.
 
 ## Task 1: **Callee traversal process**:
 
-**BATCH ALL find_calls AND find_function CALLS IN ONE MESSAGE**
-
 - Step callee.1: Identify all direct callees in modified functions
   - We gather the callees because even small changes in functions can
     cause bugs in the functions they call.  The only way to know is to
     actually read the functions in the callstack.
-  - Use semcode `find_calls` (not "find_callees") on each modified function
-    to get the complete callee list.  Batch these calls together.
+  - Read each modified function body and identify all function calls
   - Record both the callees and the arguments used
   - **List ALL callees first before loading any**
   - Output: names of callees
-- Step callee.2: For each callee, load entire function definition
-  - **Call find_function for ALL callees in ONE parallel message**
+
+- Step callee.2: Load entire function definition for each callee
+  - Use `git grep -n "^callee_name("` to find the definition location
+  - Use `git show <commit>:<path>` to read the file containing the definition
+  - Extract the complete function body (not just fragments)
   - Output: The callee function names, and a random line from anywhere in each definition
     - you must prove you read the callee
+
 - Step callee.3: Trace 2-3 levels deep as needed
-  - **Batch additional find_function calls together**
+  - For each callee, repeat the process to find its callees
   - Again, small changes higher up in the stack can introduce bugs lower
     down.  You cannot analyze code effectively without looking at the call stack,
     even for changes that you think you understand.
+
 - Step callee.4: Apply all checks below to each callee in the chain
   - Output: The callee function names, and a random line from anywhere in each definition
     - you must prove you read the callee
+
 - Step callee.5: completing the callee analysis is not sufficient.  You must also
 complete caller analysis.
 
 ## Task 2: **Caller traversal process:**
 
-**BATCH ALL find_callers CALLS IN ONE MESSAGE**
-
 - For every step, consider both the callers and the arguments used
+
 - step caller.1: identify all direct callers
   - We gather the callers because even small changes can introduce bugs
     in the functions that call them.  The only way to know is to actually
     read the functions in the callstack.
-  - **Call find_callers for ALL modified functions in ONE parallel message**
+  - Use `git grep "modified_function(" -- "*.c"` to find all call sites
+  - Identify the function containing each call site
   - Output: names of callers
+
 - step caller.2: for each caller, load function definition
+  - Use `git grep -n "^caller_name("` to find the definition location
+  - Use `git show <commit>:<path>` to read the file
+  - Extract the complete function body
   - **Call find_function for ALL callers in ONE parallel message**
   - Output: caller name, size in lines
   - Output: The caller function names, and a random line from anywhere in each definition
@@ -328,7 +335,8 @@ yet" or "no callers exist yet": patch series often add infrastructure in one
 commit and wire it up later.  A bug in the infrastructure is still a bug.
 
 If a git range was provided (`current_sha..series_end_sha`), use
-`find_commit` with `symbol_patterns` or `subject_patterns` to search forward
+`git log --grep="pattern" current_sha..series_end_sha` or
+`git log -S "symbol" current_sha..series_end_sha` to search forward
 for commits that enable the dismissed code path.  If found, **reinstate the
 issue as confirmed**.
 
@@ -341,7 +349,7 @@ possible problems?  Reconsider issues that might have been hidden by
 focusing too heavily on issues you later ruled out.
 
 - Did you fully analyze and complete Tasks 1-9 for every category? y/n
-- Did you batch all semcode calls to minimize API turns? y/n
+- Did you gather all necessary context systematically? y/n
 
 This is a deep analsys, and correctness matters more than speed.  Make sure
 every step was fully executed.

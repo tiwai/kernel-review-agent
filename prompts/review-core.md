@@ -60,7 +60,6 @@ IMMEDIATELY.
 - Discard non-essential details after each task to manage token limits
   - Don't discard function or type context if you'll use it later on
 - Exception: Keep all context for Task 4 reporting if regressions found
-- Report any context obtained outside semcode MCP tools
 
 1. Plan your initial context gathering phase after finding the diff and before making any additional tool calls
    - Before gathering context
@@ -81,35 +80,47 @@ IMMEDIATELY.
 
 ### TASK 1: Context Gathering []
 **Goal**: Build complete understanding of changed code
-1. **Using semcode MCP (preferred)**:
-   - `diff_functions`: identify changed functions and types
-   - `find_function/find_type`: get definitions for all identified items
-     - both of these accept a regex for the name, use this before grepping through the sources for definitions
-   - `find_callchain`: trace call relationships
-     - spot check call relationships, especially to understand proper API usage
-     - use arguments to limit callchain depth up and/or down.
-   - `find_callers` (who calls X) / `find_calls` (what does X call):
-     - Check at least one level up and one level down, more if needed.
-     - spot check other call relationships as required
+
+**See `git-commands-guide.md` for detailed git command examples and best practices.**
+
+1. **Identify changed functions and files**:
+   - Parse the diff to identify all modified functions
+   - Note the file paths and function names
+   - For deleted functions, use `git show <commit>^:<path>` to access the parent version
+
+2. **Load complete function definitions**:
+   - Use `git show <commit>:<path>` to read current file versions
+   - Use `git show <commit>^:<path>` to read parent versions for comparison
+   - Use `grep -A 50 "^function_name"` to extract function bodies from files
+   - For struct/type definitions: `grep -A 20 "^struct name" <path>`
+   - Never use fragments from the diff - always load the complete function or type
+
+3. **Trace call relationships**:
+   - **Finding callees** (what does function X call):
+     - Read the function body and identify all function calls
+     - Use `grep -r "function_name(" .` to find where functions are defined
+     - For kernel APIs, check header files in `include/` directories
+   - **Finding callers** (who calls function X):
+     - Use `git grep "function_name(" -- "*.c"` to find all call sites
+     - Read at least one level up and down in the call chain
      - Always trace cleanup paths and error handling
-   - `grep_functions`: search function bodies for regex patterns.
-     - returns matching lines by default (verbose=false).  When verbose=true is used, also returns entire function body
-     - use verbose=false first to find matching lines, then use semcode find_function to pull in functions you're interested in
-     - use verbose=true only with detailed regexes where you want full function bodies for every result
-     - can return a huge number of results, use path regex option to limit results to avoid avoid filling context
-     - searches inside of function bodies.  Don't try to do multi-line greps,
-       don't try to add curly brackets to limit the result inside of functions
-   - If the current commit has deleted a function, semcode won't be able to
-     find it unless you search the parent commit.
+   - Check calling conventions and argument usage at each level
 
-2. **Without semcode (fallback)**:
-   - Use git diff to identify changes
-   - Manually find function definitions and relationships with grep and other tools
-   - Document any missing context that affects research quality
+4. **Search for patterns**:
+   - Use `git grep "pattern" -- "*.c"` for regex searches in C files
+   - Use `git grep -n "pattern"` to get line numbers
+   - Limit searches with path patterns: `git grep "pattern" -- "drivers/net/*.c"`
+   - For multi-file searches, use multiple grep commands
 
-3. Never use fragments of code from the diff without first trying to find the
-entire function or type in the sources.  Always prefer full context over
-diff fragments.
+5. **Reading related code**:
+   - Headers: `git show <commit>:include/path/header.h`
+   - Related files: identify from #include statements or nearby diff context
+   - Parent commit for deleted code: `git show <commit>^:<path>`
+
+6. **Best practices**:
+   - Always prefer full function/type context over diff fragments
+   - Document file paths and commit references when loading code
+   - Load all required context systematically before analysis
 
 ### TASK 1B: Categorize changes
 
@@ -161,22 +172,6 @@ This deep dive analysis will take a long time, don't skip steps.
 
 2. Using the context loaded, and any additional context you need, analyze
 the change for regressions.
-
-3. If semcode lore is available, check for email discussion about this patch
-  - Load `lore-thread.md` for detailed instructions on processing lore threads
-  - Search lore for threads with the same subject as this patch, assume
-    the patch you're reviewing is the latest version.
-  - Consider any unaddressed comments as potential regressions
-    - Add each unaddressed comment to TodoWrite
-    - Verify each unaddressed comment as a valid complaint before reporting
-  - Output: subject lines and dates of past versions of the patch
-    ```
-    FINAL UNADDRESSED COMMENTS: NUMBER
-    Found older version: <date> <version> <subject>
-    Found older version: <date> <version2> <subject>
-    ```
-  - When the regression report mentions unaddressed review comments, provide
-    a lore link to the thread in review-inline.txt
 
 ### TASK 2.1 Commit tag verification
 

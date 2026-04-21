@@ -224,8 +224,8 @@ Create a TodoWrite for these items, all of which your report should include:
 - [ ] Any Link: tags from the commit header
 - [ ] A unified diff of the commit, quoted as though it's in an email reply.
   - [ ] The diff must not be generated from existing context.
-  - [ ] You must regenerate the diff by calling out to semcode's commit function,
-    using git log, or re-reading any patch files you were asked to review.
+  - [ ] You must regenerate the diff using the commit diff provided to you,
+    or re-reading any patch files you were asked to review.
   - [ ] You must ensure the quoted portions of the diff exactly match the
     original commit or patch.
 
