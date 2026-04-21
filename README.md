@@ -231,6 +231,37 @@ python kernel_review_agent.py HEAD --output-dir ./reviews/
 python kernel_review_agent.py HEAD --verbose
 ```
 
+### SUSE Kernel Integration
+
+For SUSE downstream kernel repositories, the agent can enhance commit messages by automatically extracting detailed patch descriptions from the kernel-source repository:
+
+```bash
+# Enable commit message enhancement from kernel-source
+python kernel_review_agent.py HEAD --suse-kernel-source /path/to/kernel-source
+
+# Or configure in ~/.config/kernel-review-agent/config.json
+{
+  "SUSE_KERNEL_SOURCE_REPO": "/path/to/kernel-source"
+}
+```
+
+**How it works:**
+- When reviewing a downstream kernel commit with a `suse-commit:` tag and short message (< 10 lines)
+- The agent looks up the corresponding kernel-source commit
+- If that commit creates a patch in `patches.suse/` or `patches.kabi/`
+- The detailed patch description (with full explanation, upstream commit reference, etc.) is used for review
+- This provides much richer context than the minimal downstream commit message
+
+**Benefits:**
+- More accurate analysis with complete problem description
+- Upstream commit references automatically extracted
+- Better understanding of the fix rationale
+- No manual lookup of patch files needed
+
+**Example:**
+- Downstream commit: "Fix use after free (bsc#1259701)"
+- Enhanced with patch description: Full explanation of the UAF issue, root cause, fix rationale, and upstream commit reference
+
 ### Performance Options
 
 ```bash

@@ -24,8 +24,10 @@ class Commit:
 class CommitExtractor:
     """Extract commit information from git repository."""
 
-    def __init__(self, verbose: bool = False):
+    def __init__(self, verbose: bool = False, debug: bool = False, kernel_source_extractor: Optional['MultiRepoExtractor'] = None):
         self.verbose = verbose
+        self.debug = debug
+        self.kernel_source_extractor = kernel_source_extractor
 
     def _run_git(self, args: List[str]) -> str:
         """Run git command and return output."""
@@ -163,6 +165,31 @@ class CommitExtractor:
         suse_commit_sha = self.extract_tag(message, 'suse-commit')
         git_commit_sha = self.extract_tag(message, 'Git-commit')
 
+        # Try to enhance commit message from kernel-source patch if applicable
+        if self.kernel_source_extractor and suse_commit_sha:
+            # Check if message is short (< 10 non-empty lines)
+            non_empty_lines = [line for line in message.split('\n') if line.strip()]
+            if len(non_empty_lines) < 10:
+                if self.debug:
+                    print(f"[DEBUG] Commit has short message ({len(non_empty_lines)} lines) and suse-commit tag")
+                    print(f"[DEBUG] Looking up kernel-source commit: {suse_commit_sha[:12]}")
+
+                # Try to extract patch description from kernel-source commit
+                patch_info = self.kernel_source_extractor.extract_patch_from_commit(suse_commit_sha)
+
+                if patch_info and patch_info.get('message'):
+                    if self.verbose:
+                        print(f"  Enhanced commit message from kernel-source patch")
+
+                    # Use patch description instead of downstream commit message
+                    if patch_info.get('subject'):
+                        subject = patch_info['subject']
+                    if patch_info.get('message'):
+                        message = patch_info['message']
+                    # Use Git-commit from patch if available and not already set
+                    if patch_info.get('git_commit') and not git_commit_sha:
+                        git_commit_sha = patch_info['git_commit']
+
         return Commit(
             sha=sha,
             author=author,
@@ -265,16 +292,18 @@ class CommitExtractor:
 class MultiRepoExtractor:
     """Handle git operations across multiple repositories."""
 
-    def __init__(self, repo_path: str, verbose: bool = False):
+    def __init__(self, repo_path: str, verbose: bool = False, debug: bool = False):
         """
         Initialize multi-repo extractor.
 
         Args:
             repo_path: Absolute path to git repository
             verbose: Enable verbose output
+            debug: Enable debug output
         """
         self.repo_path = repo_path
         self.verbose = verbose
+        self.debug = debug
         self.extractor = CommitExtractor(verbose=verbose)
 
     def is_available(self) -> bool:
@@ -369,6 +398,119 @@ class MultiRepoExtractor:
                 suse_commit=suse_commit,
                 upstream_commit=git_commit  # Git-commit tag from SUSE repo diff
             )
+
+        except subprocess.CalledProcessError:
+            return None
+
+    def extract_patch_from_commit(self, commit_sha: str) -> Optional[dict]:
+        """
+        Extract patch file content from a kernel-source commit.
+
+        Looks for newly created patch files in patches.suse/ or patches.kabi/
+        and extracts their content including headers and description.
+
+        Args:
+            commit_sha: Commit SHA in kernel-source repo
+
+        Returns:
+            Dict with 'subject', 'message', 'author', 'git_commit' or None if no patch found
+        """
+        if not self.is_available():
+            return None
+
+        try:
+            # Get the commit diff
+            diff_result = subprocess.run(
+                ['git', '-C', self.repo_path, 'show', '--format=', commit_sha],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            diff = diff_result.stdout
+
+            # Look for new patch files in patches.suse/ or patches.kabi/
+            patch_file_path = None
+            for line in diff.split('\n'):
+                # Match: +++ b/patches.suse/filename.patch or +++ b/patches.kabi/filename.patch
+                match = re.match(r'^\+\+\+ b/(patches\.(?:suse|kabi)/[^\s]+\.patch)', line)
+                if match:
+                    patch_file_path = match.group(1)
+                    if self.debug:
+                        print(f"[DEBUG] Found patch file in kernel-source commit: {patch_file_path}")
+                    break
+
+            if not patch_file_path:
+                return None
+
+            # Extract the patch content from the diff
+            # The content appears as added lines (starting with '+')
+            patch_lines = []
+            in_patch_content = False
+
+            for line in diff.split('\n'):
+                # Start collecting after the "+++ b/patches.suse/..." line
+                if line.startswith('+++ b/' + patch_file_path):
+                    in_patch_content = True
+                    continue
+
+                # Stop at next file
+                if in_patch_content and line.startswith('diff --git'):
+                    break
+
+                # Collect added lines (remove the leading '+')
+                if in_patch_content and line.startswith('+'):
+                    patch_lines.append(line[1:])  # Remove '+' prefix
+
+            if not patch_lines:
+                return None
+
+            patch_content = '\n'.join(patch_lines)
+
+            # Parse patch headers
+            author = None
+            subject = None
+            git_commit = None
+            message_lines = []
+            in_description = False
+
+            for line in patch_content.split('\n'):
+                # Extract From: author
+                if line.startswith('From:'):
+                    author = line.split(':', 1)[1].strip()
+                # Extract Subject:
+                elif line.startswith('Subject:'):
+                    subject = line.split(':', 1)[1].strip()
+                    in_description = True
+                # Extract Git-commit:
+                elif line.startswith('Git-commit:'):
+                    git_commit = line.split(':', 1)[1].strip()
+                # Stop at start of actual patch diff
+                elif line.startswith('---') or line.startswith('diff --git'):
+                    break
+                # Collect description lines (between Subject and ---)
+                elif in_description and line.strip() and not line.startswith(('References:', 'Patch-mainline:', 'Git-repo:', 'Date:')):
+                    message_lines.append(line)
+
+            # Build full message including subject
+            if subject:
+                full_message = subject
+                if message_lines:
+                    full_message += '\n\n' + '\n'.join(message_lines)
+            else:
+                full_message = '\n'.join(message_lines) if message_lines else None
+
+            if self.debug and (subject or full_message):
+                print(f"[DEBUG] Extracted patch description from {patch_file_path}")
+                print(f"[DEBUG]   Subject: {subject}")
+                if git_commit:
+                    print(f"[DEBUG]   Git-commit: {git_commit}")
+
+            return {
+                'subject': subject,
+                'message': full_message,
+                'author': author,
+                'git_commit': git_commit
+            }
 
         except subprocess.CalledProcessError:
             return None

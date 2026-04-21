@@ -41,7 +41,7 @@ def setup_module_path():
 setup_module_path()
 
 import config
-from git_integration import CommitExtractor
+from git_integration import CommitExtractor, MultiRepoExtractor
 from llm_integration import create_llm_client, get_provider_from_args
 from prompt_management import PromptLoader, SubsystemMatcher
 from analysis import ReviewWorkflow
@@ -206,9 +206,9 @@ Examples:
 
     args = parser.parse_args()
 
-    # Check if in git repository
-    git = CommitExtractor(verbose=args.verbose)
-    if not git.is_git_repo():
+    # Check if in git repository (temporary extractor for check)
+    temp_git = CommitExtractor(verbose=args.verbose)
+    if not temp_git.is_git_repo():
         print("Error: Must run in a git repository", file=sys.stderr)
         return 1
 
@@ -308,10 +308,35 @@ Examples:
 
     matcher = SubsystemMatcher()
 
+    # Initialize kernel-source extractor for commit message enhancement
+    kernel_source_extractor = None
+    suse_kernel_source = args.suse_kernel_source or config.SUSE_KERNEL_SOURCE_REPO
+
+    if suse_kernel_source and not args.patch:
+        kernel_source_extractor = MultiRepoExtractor(
+            repo_path=suse_kernel_source,
+            verbose=args.verbose,
+            debug=args.debug
+        )
+
+        if kernel_source_extractor.is_available():
+            if args.verbose:
+                print(f"Kernel-source commit message enhancement enabled")
+        else:
+            if args.debug:
+                print(f"[DEBUG] Kernel-source repository not available: {suse_kernel_source}")
+            kernel_source_extractor = None
+
+    # Initialize git commit extractor with kernel-source enhancement
+    git = CommitExtractor(
+        verbose=args.verbose,
+        debug=args.debug,
+        kernel_source_extractor=kernel_source_extractor
+    )
+
     # Initialize SUSE verifier if configured (skip in patch mode)
     suse_verifier = None
     if not args.patch:
-        suse_kernel_source = args.suse_kernel_source or config.SUSE_KERNEL_SOURCE_REPO
         upstream_linux = args.upstream_linux or config.UPSTREAM_LINUX_REPO
 
         if suse_kernel_source:
