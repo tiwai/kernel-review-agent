@@ -109,6 +109,12 @@ python kernel_review_agent.py HEAD~5..HEAD
 
 # Review range with specific endpoints
 python kernel_review_agent.py v6.8..v6.9
+
+# Review multiple commits
+python kernel_review_agent.py HEAD abc123 def456
+
+# Review multiple ranges
+python kernel_review_agent.py HEAD~5..HEAD~3 HEAD~1..HEAD
 ```
 
 ### LLM Provider Options
@@ -405,8 +411,14 @@ The agent automatically loads guides for 51+ kernel subsystems:
 # Review last 10 commits
 python kernel_review_agent.py HEAD~10..HEAD --output-dir ./reviews/
 
+# Review multiple specific commits
+python kernel_review_agent.py HEAD abc123 def456 --output-dir ./reviews/
+
+# Review multiple ranges
+python kernel_review_agent.py HEAD~5..HEAD~3 HEAD~1..HEAD --output-dir ./reviews/
+
 # Count issues found
-grep -c "issues-found" ./reviews/*.json
+grep -c "issues-found" ./reviews/*/*.json
 ```
 
 ### Integration with CI/CD

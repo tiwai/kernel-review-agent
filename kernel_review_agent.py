@@ -61,14 +61,18 @@ Examples:
   # Review commit range
   %(prog)s HEAD~5..HEAD --host localhost --port 8080
 
-  # Save to custom directory
-  %(prog)s abc123def --output-dir ./reviews/
+  # Review multiple commits
+  %(prog)s HEAD abc123 def456 --output-dir ./reviews/
+
+  # Review multiple ranges
+  %(prog)s HEAD~5..HEAD~3 HEAD~1..HEAD --output-dir ./reviews/
         """
     )
 
     parser.add_argument(
         "commit",
-        help="Commit SHA or range (e.g., abc123, HEAD~5..HEAD)"
+        nargs='+',
+        help="Commit SHA(s) or range(s) (e.g., abc123, HEAD~5..HEAD, or multiple: HEAD abc123 def456)"
     )
 
     parser.add_argument(
@@ -330,13 +334,16 @@ Examples:
     formatter = ReportFormatter()
     metadata_gen = MetadataGenerator()
 
-    # Expand commit range
-    try:
-        commits = git.expand_range(args.commit)
-    except Exception as e:
-        print(f"Error: Invalid commit or range: {args.commit}", file=sys.stderr)
-        print(f"Details: {e}", file=sys.stderr)
-        return 1
+    # Expand all commit arguments
+    commits = []
+    for commit_arg in args.commit:
+        try:
+            expanded = git.expand_range(commit_arg)
+            commits.extend(expanded)
+        except Exception as e:
+            print(f"Error: Invalid commit or range: {commit_arg}", file=sys.stderr)
+            print(f"Details: {e}", file=sys.stderr)
+            return 1
 
     if args.verbose:
         print(f"Processing {len(commits)} commit(s)...\n")
