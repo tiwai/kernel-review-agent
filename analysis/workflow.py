@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from git_integration import Commit
 from llm_integration import OpenAIClient
 from prompt_management import PromptLoader, SubsystemMatcher
+from analysis.code_context import CodeContextLoader
 import config
 
 
@@ -211,6 +212,20 @@ class ReviewWorkflow:
                 "has_h_files": any(f.endswith('.h') for f in commit.files)
             }
         }
+
+        # Load full source code context for deeper analysis
+        if self.debug:
+            print(f"[DEBUG] Loading full source code context...")
+
+        code_loader = CodeContextLoader(commit, verbose=self.verbose, debug=self.debug)
+        full_context = code_loader.load_full_context()
+        context["code_context"] = full_context
+        context["code_context_formatted"] = code_loader.format_context_for_prompt(full_context)
+
+        if self.debug:
+            print(f"[DEBUG] Loaded {len(full_context.get('function_definitions', {}))} function definitions")
+            print(f"[DEBUG] Loaded {sum(len(v) for v in full_context.get('callers', {}).values())} caller references")
+
         return context
 
     def _extract_changed_functions(self, diff: str) -> List[str]:
@@ -308,6 +323,19 @@ Return ONLY a JSON array of changes, no other text:
         if commit.message and commit.message.strip() and commit.message != commit.subject:
             commit_context += f"\n\nCommit message:\n{commit.message}"
 
+        # Include full code context if available
+        code_context_section = ""
+        if context.get("code_context_formatted"):
+            code_context_section = f"""
+COMPLETE SOURCE CODE CONTEXT:
+The following sections show the full function definitions (before and after changes),
+their callers, and related code. Use this to understand the complete call paths and
+verify your findings.
+
+{context["code_context_formatted"]}
+
+"""
+
         user_prompt = f"""Analyze this commit for potential regressions.
 
 {commit_context}
@@ -315,8 +343,15 @@ Return ONLY a JSON array of changes, no other text:
 Categories of changes:
 {categories_text}
 
-Full diff:
+{code_context_section}Full diff:
 {commit.diff}
+
+IMPORTANT: You have been provided with the full function definitions (both before and after
+the changes) and their callers above. Use this complete context to:
+1. Verify how the changed functions are actually called
+2. Check what happens to return values
+3. Trace error handling paths in both current and parent versions
+4. Confirm your analysis against the actual source code, not just the diff
 
 For each potential issue found, return a JSON object with:
 - category: Which CHANGE-X this relates to
@@ -388,16 +423,32 @@ If no issues found, return: []
         if commit.message and commit.message.strip() and commit.message != commit.subject:
             commit_context += f"\n\nCommit message:\n{commit.message}"
 
+        # Include full code context for verification
+        code_context_section = ""
+        if context.get("code_context_formatted"):
+            code_context_section = f"""
+COMPLETE SOURCE CODE CONTEXT FOR VERIFICATION:
+Use the following complete function definitions and caller information to verify
+each finding. Check the actual code, not just assumptions from the diff.
+
+{context["code_context_formatted"]}
+
+"""
+
         user_prompt = f"""Verify these findings against the false-positive prevention guide.
 
 For each finding, check:
 1. Is there concrete evidence this can happen?
 2. Is this defensive programming vs. a real bug?
 3. Are all assumptions verified with code?
+4. IMPORTANT: Use the complete source code context provided below to verify
+   - Check how functions are actually called
+   - Verify error handling in callers
+   - Confirm the issue exists in the actual code, not just theory
 
 {commit_context}
 
-Commit diff:
+{code_context_section}Commit diff:
 {commit.diff}
 
 Findings to verify:
