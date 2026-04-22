@@ -428,6 +428,17 @@ Examples:
                 if args.output_dir != "." and not os.path.exists(args.output_dir):
                     os.makedirs(args.output_dir)
 
+                # Clean up old review files in patch mode (always overwrite)
+                old_files = [
+                    os.path.join(args.output_dir, "review-metadata.json"),
+                    os.path.join(args.output_dir, "review-inline.txt")
+                ]
+                for old_file in old_files:
+                    if os.path.exists(old_file):
+                        os.remove(old_file)
+                        if args.debug:
+                            print(f"[DEBUG] Removed stale file: {old_file}")
+
                 # Generate outputs
                 report_text = formatter.format_report(
                     commit,
@@ -491,6 +502,19 @@ Examples:
                         print(f"[{i}/{len(commits)}] Skipping already processed commit {sha_short}...")
                     skipped += 1
                     continue
+
+                # If --force and directory exists, clean up old review files
+                if args.force and os.path.exists(commit_dir):
+                    old_files = [
+                        os.path.join(commit_dir, "review-metadata.json"),
+                        os.path.join(commit_dir, "review-pre-verification.json"),
+                        os.path.join(commit_dir, "review-inline.txt")
+                    ]
+                    for old_file in old_files:
+                        if os.path.exists(old_file):
+                            os.remove(old_file)
+                            if args.debug:
+                                print(f"[DEBUG] Removed stale file: {old_file}")
 
                 # Show progress for multiple commits
                 if total_items > 1 and args.verbose:
