@@ -242,6 +242,49 @@ class ReviewWorkflow:
 
         return list(functions)
 
+    def _sanitize_json_string(self, json_str: str) -> str:
+        """
+        Sanitize JSON string by escaping control characters.
+
+        LLMs sometimes output literal control characters (newlines, tabs, etc.)
+        within JSON strings, which are invalid in JSON. This function finds
+        string values and escapes control characters within them.
+
+        Args:
+            json_str: Raw JSON string from LLM
+
+        Returns:
+            Sanitized JSON string safe for parsing
+        """
+        # Replace common control characters that appear literally in JSON strings
+        # We need to be careful to only replace them inside string values, not
+        # in the JSON structure itself (like between "key": "value" pairs)
+
+        # Simple approach: replace literal control characters with escaped versions
+        # This works because JSON structure uses {, }, [, ], :, , which aren't affected
+        result = json_str
+
+        # Replace literal tab, newline, carriage return with escaped versions
+        # But only if they appear within quoted strings
+        import re
+
+        # Find all string values (content between quotes)
+        def escape_string_content(match):
+            content = match.group(1)
+            # Escape control characters
+            content = content.replace('\n', '\\n')
+            content = content.replace('\r', '\\r')
+            content = content.replace('\t', '\\t')
+            content = content.replace('\b', '\\b')
+            content = content.replace('\f', '\\f')
+            return f'"{content}"'
+
+        # Match quoted strings, but be careful with already-escaped quotes
+        # This pattern matches: "any content including \" but not unescaped ""
+        result = re.sub(r'"((?:[^"\\]|\\.)*)?"', escape_string_content, result)
+
+        return result
+
     def _categorize_changes(self, commit: Commit, context: Dict) -> List[Dict]:
         """
         Task 1: Categorize changes using LLM.
@@ -281,7 +324,10 @@ Return ONLY a JSON array of changes, no other text:
             # Extract JSON from response (may have markdown code blocks)
             json_match = re.search(r'\[.*\]', response, re.DOTALL)
             if json_match:
-                categories = json.loads(json_match.group(0))
+                json_str = json_match.group(0)
+                # Sanitize JSON to handle literal control characters from LLM
+                json_str = self._sanitize_json_string(json_str)
+                categories = json.loads(json_str)
                 return categories if isinstance(categories, list) else []
             else:
                 if self.verbose or self.debug:
@@ -372,7 +418,14 @@ If no issues found, return: []
         try:
             json_match = re.search(r'\[.*\]', response, re.DOTALL)
             if json_match:
-                findings = json.loads(json_match.group(0))
+                json_str = json_match.group(0)
+
+                # Sanitize JSON: LLMs sometimes output literal control characters
+                # in strings which are invalid in JSON. We need to escape them.
+                # This handles newlines, tabs, carriage returns, etc.
+                json_str = self._sanitize_json_string(json_str)
+
+                findings = json.loads(json_str)
                 return findings if isinstance(findings, list) else []
             else:
                 if self.verbose or self.debug:
@@ -464,7 +517,10 @@ Return ONLY verified findings as JSON array (discard false positives):
         try:
             json_match = re.search(r'\[.*\]', response, re.DOTALL)
             if json_match:
-                verified = json.loads(json_match.group(0))
+                json_str = json_match.group(0)
+                # Sanitize JSON to handle literal control characters from LLM
+                json_str = self._sanitize_json_string(json_str)
+                verified = json.loads(json_str)
                 return verified if isinstance(verified, list) else []
             else:
                 if self.verbose or self.debug:
