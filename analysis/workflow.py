@@ -242,6 +242,39 @@ class ReviewWorkflow:
 
         return list(functions)
 
+    def _looks_truncated(self, json_str: str) -> bool:
+        """
+        Check if JSON string appears to be truncated.
+
+        Args:
+            json_str: JSON string to check
+
+        Returns:
+            True if the JSON appears incomplete/truncated
+        """
+        # Strip whitespace from end
+        trimmed = json_str.rstrip()
+
+        # Check if it ends with proper closing for a JSON array/object
+        if not trimmed:
+            return True
+
+        # JSON array should end with ]
+        # JSON object should end with }
+        # If it ends mid-string, mid-value, or with unclosed brackets, it's truncated
+        if trimmed[-1] not in [']', '}']:
+            return True
+
+        # Count opening/closing brackets
+        open_brackets = trimmed.count('[') + trimmed.count('{')
+        close_brackets = trimmed.count(']') + trimmed.count('}')
+
+        # If brackets don't match, likely truncated
+        if open_brackets != close_brackets:
+            return True
+
+        return False
+
     def _sanitize_json_string(self, json_str: str) -> str:
         """
         Sanitize JSON string by escaping control characters.
@@ -336,8 +369,16 @@ Return ONLY a JSON array of changes, no other text:
         except json.JSONDecodeError as e:
             if self.verbose or self.debug:
                 print(f"[ERROR] Failed to parse categorization JSON: {e}", file=sys.stderr)
-                print(f"[ERROR] Response may be truncated. Last 100 chars: ...{response[-100:]}", file=sys.stderr)
-                print(f"[ERROR] Increase CATEGORIZE_MAX_TOKENS in config.py (current: {config.CATEGORIZE_MAX_TOKENS})", file=sys.stderr)
+
+                # Check if this looks like truncation
+                is_truncated = self._looks_truncated(json_str if 'json_str' in locals() else response)
+
+                if is_truncated:
+                    print(f"[ERROR] Response appears truncated (incomplete JSON)", file=sys.stderr)
+                    print(f"[ERROR] Last 100 chars: ...{response[-100:]}", file=sys.stderr)
+                    print(f"[ERROR] Try increasing CATEGORIZE_MAX_TOKENS in config.py (current: {config.CATEGORIZE_MAX_TOKENS})", file=sys.stderr)
+                else:
+                    print(f"[ERROR] JSON format issue (not truncation)", file=sys.stderr)
 
         return []
 
@@ -434,16 +475,25 @@ If no issues found, return: []
         except json.JSONDecodeError as e:
             if self.verbose or self.debug:
                 print(f"[ERROR] Failed to parse regression analysis JSON: {e}", file=sys.stderr)
-                print(f"[ERROR] Error details: {str(e)}", file=sys.stderr)
-                print(f"[ERROR] Response may be truncated. Last 100 chars: ...{response[-100:]}", file=sys.stderr)
-                print(f"[ERROR] Increase ANALYZE_MAX_TOKENS in config.py (current: {config.ANALYZE_MAX_TOKENS})", file=sys.stderr)
-                if self.llm.dump_prompts:
-                    print(f"[ERROR] Check dump files in {self.llm.dump_dir}/ for full response", file=sys.stderr)
+
                 # Try to show the problematic area
                 if hasattr(e, 'pos'):
                     start = max(0, e.pos - 50)
                     end = min(len(response), e.pos + 50)
                     print(f"[ERROR] Context around error position {e.pos}: ...{response[start:end]}...", file=sys.stderr)
+
+                # Check if this looks like truncation (incomplete JSON)
+                is_truncated = self._looks_truncated(json_str if 'json_str' in locals() else response)
+
+                if is_truncated:
+                    print(f"[ERROR] Response appears truncated (incomplete JSON)", file=sys.stderr)
+                    print(f"[ERROR] Last 100 chars: ...{response[-100:]}", file=sys.stderr)
+                    print(f"[ERROR] Try increasing ANALYZE_MAX_TOKENS in config.py (current: {config.ANALYZE_MAX_TOKENS})", file=sys.stderr)
+                else:
+                    print(f"[ERROR] JSON format issue (not truncation)", file=sys.stderr)
+
+                if self.llm.dump_prompts:
+                    print(f"[ERROR] Check dump files in {self.llm.dump_dir}/ for full response", file=sys.stderr)
 
         return []
 
@@ -531,8 +581,17 @@ Return ONLY verified findings as JSON array (discard false positives):
         except json.JSONDecodeError as e:
             if self.verbose or self.debug:
                 print(f"[ERROR] Failed to parse verification JSON: {e}", file=sys.stderr)
-                print(f"[ERROR] Response may be truncated. Last 100 chars: ...{response[-100:]}", file=sys.stderr)
-                print(f"[ERROR] Increase VERIFY_MAX_TOKENS in config.py (current: {config.VERIFY_MAX_TOKENS})", file=sys.stderr)
+
+                # Check if this looks like truncation
+                is_truncated = self._looks_truncated(json_str if 'json_str' in locals() else response)
+
+                if is_truncated:
+                    print(f"[ERROR] Response appears truncated (incomplete JSON)", file=sys.stderr)
+                    print(f"[ERROR] Last 100 chars: ...{response[-100:]}", file=sys.stderr)
+                    print(f"[ERROR] Try increasing VERIFY_MAX_TOKENS in config.py (current: {config.VERIFY_MAX_TOKENS})", file=sys.stderr)
+                else:
+                    print(f"[ERROR] JSON format issue (not truncation)", file=sys.stderr)
+
                 print("[WARNING] Keeping original findings to avoid losing data", file=sys.stderr)
             # If parsing fails, keep original findings rather than discarding
             return findings
