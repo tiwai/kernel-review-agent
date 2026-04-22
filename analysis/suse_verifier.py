@@ -191,9 +191,25 @@ class SuseUpstreamVerifier:
             print(f"[SUSE] Upstream: {upstream_commit.subject}")
 
         # Step 5: Compare findings against upstream
-        # Simple heuristic: check if finding locations exist in upstream diff
+        # Check if finding locations exist in upstream diff
+
+        # First, do a sanity check: are the diffs similar?
+        downstream_files = set(downstream_commit.files)
+        upstream_files = set(upstream_commit.files)
+        common_files = downstream_files & upstream_files
+
+        if self.debug:
+            print(f"[DEBUG] Downstream files: {downstream_files}")
+            print(f"[DEBUG] Upstream files: {upstream_files}")
+            print(f"[DEBUG] Common files: {common_files}")
+
+        # If all downstream files are in upstream, likely all findings are in upstream
+        if downstream_files and downstream_files.issubset(upstream_files):
+            if self.debug:
+                print(f"[DEBUG] All downstream files present in upstream - likely same changes")
+
         for finding in findings:
-            if self._finding_exists_in_upstream(finding, upstream_commit):
+            if self._finding_exists_in_upstream(finding, upstream_commit, downstream_commit):
                 result['findings_in_upstream'].append(finding)
             else:
                 result['findings_only_downstream'].append(finding)
@@ -207,39 +223,129 @@ class SuseUpstreamVerifier:
     def _finding_exists_in_upstream(
         self,
         finding: Dict,
-        upstream_commit: Commit
+        upstream_commit: Commit,
+        downstream_commit: Commit
     ) -> bool:
         """
-        Heuristic to determine if finding exists in upstream.
+        Determine if finding exists in upstream by comparing actual code changes.
 
-        Checks if the code patterns mentioned in the finding's evidence
-        appear in the upstream diff.
+        Uses multiple strategies:
+        1. Check if finding's file location is modified in upstream
+        2. Check if key code patterns from finding appear in upstream diff
+        3. Look for similar changes in the same functions
+        4. Compare downstream and upstream diffs for similarity
 
         Args:
             finding: Finding dictionary
             upstream_commit: Upstream commit
+            downstream_commit: Downstream commit
 
         Returns:
             True if finding likely exists in upstream
         """
-        evidence = finding.get('evidence', '')
-        if not evidence:
-            # No evidence to check, assume downstream-only
-            return False
+        # Strategy 0: Quick check - if diffs are very similar, it's the same change
+        # Extract added lines from both diffs (lines starting with +)
+        downstream_added = set()
+        upstream_added = set()
 
-        # Simple substring check: does evidence code appear in upstream diff?
-        # More sophisticated: could use fuzzy matching or AST comparison
+        for line in downstream_commit.diff.split('\n'):
+            if line.startswith('+') and not line.startswith('+++'):
+                # Normalize: remove leading + and whitespace
+                normalized = line[1:].strip()
+                if normalized and len(normalized) > 3:
+                    downstream_added.add(normalized)
 
-        # Extract code snippets from evidence (lines that look like code)
-        code_lines = [
-            line.strip()
-            for line in evidence.split('\n')
-            if line.strip() and not line.strip().startswith('//')
-        ]
+        for line in upstream_commit.diff.split('\n'):
+            if line.startswith('+') and not line.startswith('+++'):
+                normalized = line[1:].strip()
+                if normalized and len(normalized) > 3:
+                    upstream_added.add(normalized)
 
-        # Check if any code lines appear in upstream diff
-        for code_line in code_lines:
-            if len(code_line) > 10 and code_line in upstream_commit.diff:
+        # If there's significant overlap in added lines, it's the same change
+        if downstream_added and upstream_added:
+            common_lines = downstream_added & upstream_added
+            if len(common_lines) >= 2:  # At least 2 identical added lines
+                if self.debug:
+                    print(f"[DEBUG] Found {len(common_lines)} common added lines between downstream and upstream")
                 return True
 
+        # Strategy 1: Check if the finding's location matches upstream changes
+        location = finding.get('location', '')
+        category = finding.get('category', '')
+
+        # Extract file from location (format: "file.c, function_name" or just "file.c")
+        file_from_location = None
+        if location:
+            # Location format examples:
+            # "net/ipv6/exthdrs.c, ipv6_srh_rcv"
+            # "net/ipv6/seg6_hmac.c"
+            parts = location.split(',')
+            if parts:
+                file_from_location = parts[0].strip()
+
+        # Check if the file is modified in upstream
+        if file_from_location and file_from_location in upstream_commit.files:
+            if self.debug:
+                print(f"[DEBUG] Finding location {file_from_location} is in upstream files")
+            # File is modified in upstream, likely the same change
+            return True
+
+        # Strategy 2: Check evidence text
+        evidence = finding.get('evidence', '')
+        if evidence:
+            # Extract code snippets from evidence (lines that look like code)
+            code_lines = []
+            for line in evidence.split('\n'):
+                stripped = line.strip()
+                # Look for actual code lines (not comments or descriptions)
+                if stripped and len(stripped) > 5:
+                    # Skip lines that are clearly descriptions
+                    if not any(stripped.lower().startswith(word) for word in
+                              ['the', 'this', 'shows', 'standard', 'pattern', 'caller', 'diff']):
+                        code_lines.append(stripped)
+
+            # Check if any code lines appear in upstream diff (with some flexibility)
+            for code_line in code_lines:
+                # Remove extra whitespace for better matching
+                normalized_line = ' '.join(code_line.split())
+                normalized_diff = ' '.join(upstream_commit.diff.split())
+
+                if len(normalized_line) > 10 and normalized_line in normalized_diff:
+                    if self.debug:
+                        print(f"[DEBUG] Found matching code in upstream: {code_line[:50]}")
+                    return True
+
+        # Strategy 3: Check for similar changes in the same files
+        # Extract changed lines from finding type/message
+        finding_type = finding.get('type', '').lower()
+        message = finding.get('message', '').lower()
+
+        # Look for key indicators that suggest the same issue
+        # e.g., "kfree_skb", "return false", "null check"
+        key_patterns = []
+        if 'kfree_skb' in message or 'kfree_skb' in evidence:
+            key_patterns.append('kfree_skb')
+        if 'return false' in message or 'return false' in evidence:
+            key_patterns.append('return false')
+        if 'return -1' in message or 'return -1' in evidence:
+            key_patterns.append('return -1')
+        if 'null check' in message or '!idev' in evidence:
+            key_patterns.append('!idev')
+            key_patterns.append('if (!idev')
+
+        # Check if these patterns appear in upstream
+        for pattern in key_patterns:
+            if pattern in upstream_commit.diff:
+                if self.debug:
+                    print(f"[DEBUG] Found key pattern in upstream: {pattern}")
+                return True
+
+        # If we have no evidence and no location match, default to upstream
+        # (better to over-report as upstream than miss upstream issues)
+        if not evidence and not location:
+            if self.verbose:
+                print(f"[SUSE] No evidence or location for finding, defaulting to upstream")
+            return True
+
+        # No matches found
         return False

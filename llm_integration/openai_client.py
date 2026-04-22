@@ -51,11 +51,11 @@ class OpenAIClient(LLMClient):
                 print(f"[DEBUG] Created dump directory: {self.dump_dir}")
 
         try:
-            # For localhost connections, disable SSL verification
-            # (avoids certificate issues and makes sense for local servers)
+            # For HTTP connections (local servers), disable SSL verification
+            # to avoid certificate issues
             import httpx
             http_client = None
-            if host in ['localhost', '127.0.0.1', '::1']:
+            if self.base_url.startswith('http://'):
                 http_client = httpx.Client(verify=False)
 
             self.client = OpenAI(
@@ -65,7 +65,8 @@ class OpenAIClient(LLMClient):
                 http_client=http_client
             )
         except Exception as e:
-            raise RuntimeError(f"Failed to initialize OpenAI client: {e}")
+            import traceback
+            raise RuntimeError(f"Failed to initialize OpenAI client: {e}\nTraceback: {traceback.format_exc()}")
 
         if self.debug:
             print(f"[DEBUG] OpenAI client initialized with timeout: {config.LLM_TIMEOUT}s")
