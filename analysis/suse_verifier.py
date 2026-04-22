@@ -243,7 +243,7 @@ class SuseUpstreamVerifier:
         Returns:
             True if finding likely exists in upstream
         """
-        # Strategy 0: Quick check - if diffs are very similar, it's the same change
+        # Strategy 0: Compare diffs for similarity and completeness
         # Extract added lines from both diffs (lines starting with +)
         downstream_added = set()
         upstream_added = set()
@@ -261,12 +261,56 @@ class SuseUpstreamVerifier:
                 if normalized and len(normalized) > 3:
                     upstream_added.add(normalized)
 
-        # If there's significant overlap in added lines, it's the same change
+        # Check for differences between the diffs
         if downstream_added and upstream_added:
             common_lines = downstream_added & upstream_added
-            if len(common_lines) >= 2:  # At least 2 identical added lines
+            missing_in_downstream = upstream_added - downstream_added
+            extra_in_downstream = downstream_added - upstream_added
+
+            if self.debug:
+                print(f"[DEBUG] Diff comparison:")
+                print(f"[DEBUG]   Common lines: {len(common_lines)}")
+                print(f"[DEBUG]   Missing in downstream: {len(missing_in_downstream)}")
+                print(f"[DEBUG]   Extra in downstream: {len(extra_in_downstream)}")
+                if missing_in_downstream:
+                    print(f"[DEBUG]   Missing lines: {list(missing_in_downstream)[:3]}")
+                if extra_in_downstream:
+                    print(f"[DEBUG]   Extra lines: {list(extra_in_downstream)[:3]}")
+
+            # If there are significant differences, the changes are NOT the same
+            # Missing lines from upstream indicate incomplete backport (downstream bug)
+            # Extra lines in downstream indicate downstream-specific changes
+            total_upstream = len(upstream_added)
+            if total_upstream > 0:
+                # Calculate similarity ratio
+                similarity = len(common_lines) / total_upstream
+
+                # If less than 80% of upstream changes are in downstream, it's incomplete
+                if similarity < 0.8:
+                    if self.debug:
+                        print(f"[DEBUG] Incomplete backport: only {similarity:.1%} similarity")
+                    return False  # Downstream-only finding (incomplete backport)
+
+                # If there are missing critical lines (like goto, return, break), it's a bug
+                critical_keywords = {'goto', 'return', 'break', 'continue', 'unlock', 'free'}
+                for missing_line in missing_in_downstream:
+                    words = missing_line.lower().split()
+                    if any(keyword in words for keyword in critical_keywords):
+                        if self.verbose or self.debug:
+                            print(f"[SUSE] Incomplete backport: missing critical line: {missing_line}")
+                        return False  # Downstream-only bug (missing critical code)
+
+            # If we have significant overlap and no critical missing lines, check structure
+            if len(common_lines) >= 2:
+                # Additional check: look for dangerous patterns in downstream
+                # Pattern: assignment followed by free without control flow
+                if self._has_use_after_free_pattern(downstream_commit.diff):
+                    if self.verbose or self.debug:
+                        print(f"[SUSE] Potential use-after-free pattern detected in downstream")
+                    return False  # Downstream-only bug
+
                 if self.debug:
-                    print(f"[DEBUG] Found {len(common_lines)} common added lines between downstream and upstream")
+                    print(f"[DEBUG] Substantial overlap: {len(common_lines)} common lines")
                 return True
 
         # Strategy 1: Check if the finding's location matches upstream changes
@@ -348,4 +392,60 @@ class SuseUpstreamVerifier:
             return True
 
         # No matches found
+        return False
+
+    def _has_use_after_free_pattern(self, diff: str) -> bool:
+        """
+        Check for dangerous patterns where memory is assigned then immediately freed.
+
+        Pattern: ptr = allocation; ... free(ptr); without control flow in between.
+        This catches incomplete backports that are missing goto/return statements.
+
+        Args:
+            diff: Diff content to check
+
+        Returns:
+            True if dangerous pattern found
+        """
+        lines = diff.split('\n')
+
+        # Look for pattern: assignment to pointer followed by kfree without goto/return
+        for i, line in enumerate(lines):
+            # Skip non-diff lines
+            if not line or line[0] not in ['+', '-', ' ']:
+                continue
+
+            # Look for pointer assignments (like "vs->vs_tpg = vs_tpg;")
+            if ' = ' in line and not line.startswith('-'):
+                stripped = line[1:] if line[0] in ['+', ' '] else line
+                stripped = stripped.strip()
+
+                # Extract variable being assigned (left side of =)
+                if '=' in stripped:
+                    lhs = stripped.split('=')[0].strip()
+
+                    # Look ahead for kfree/free of related variable within next 10 lines
+                    for j in range(i + 1, min(i + 11, len(lines))):
+                        next_line = lines[j]
+                        if not next_line or next_line[0] not in ['+', '-', ' ']:
+                            continue
+
+                        next_stripped = next_line[1:] if next_line[0] in ['+', ' '] else next_line
+                        next_stripped = next_stripped.strip()
+
+                        # If we hit a goto/return/break, safe to break
+                        if any(kw in next_stripped for kw in ['goto ', 'return', 'break']):
+                            break
+
+                        # If we see kfree/free of the assigned value
+                        if 'free(' in next_stripped or 'kfree(' in next_stripped:
+                            # Check if freeing the right-hand side of the assignment
+                            rhs = stripped.split('=')[1].strip().rstrip(';')
+                            if rhs in next_stripped:
+                                if self.debug:
+                                    print(f"[DEBUG] Found use-after-free pattern:")
+                                    print(f"[DEBUG]   Assignment: {stripped}")
+                                    print(f"[DEBUG]   Free: {next_stripped}")
+                                return True
+
         return False
