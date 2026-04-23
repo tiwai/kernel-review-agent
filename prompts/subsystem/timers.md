@@ -93,6 +93,71 @@ spin_unlock(&obj->lock);
 - `timer_shutdown_sync()` for teardown paths
 - `setup_timer()` and `init_timer()` are removed
 
+## Timer API Conversion: setup_timer() → timer_setup()
+
+**CRITICAL: These APIs have incompatible callback signatures and cannot be swapped without updating the callback function.**
+
+### Old API (removed): setup_timer()
+```c
+void callback(unsigned long data) {
+    struct foo *obj = (struct foo *)data;
+    // use obj...
+}
+
+setup_timer(&obj->timer, callback, (unsigned long)obj);
+```
+- Callback receives: `unsigned long data` (pointer cast to unsigned long)
+- Data passed explicitly as third argument to setup_timer()
+
+### New API: timer_setup()
+```c
+void callback(struct timer_list *t) {
+    struct foo *obj = from_timer(obj, t, timer);
+    // use obj...
+}
+
+timer_setup(&obj->timer, callback, flags);
+```
+- Callback receives: `struct timer_list *` (pointer to the timer itself)
+- Object extracted using `from_timer(var, timer_ptr, timer_field_name)`
+- No data argument needed; container_of() magic retrieves parent struct
+
+### Common Conversion Bug Pattern
+
+**WRONG - incomplete conversion:**
+```c
+// Old callback signature NOT updated:
+static void timeout_func(unsigned long data) {  // WRONG!
+    struct foo *obj = (struct foo *)data;
+    // ...
+}
+
+// Only changed the setup call:
+timer_setup(&obj->timer, timeout_func, 0);  // BUG: signature mismatch!
+```
+**Result:** Crash - callback receives `struct timer_list *` but expects `unsigned long`.
+
+**CORRECT - complete conversion:**
+```c
+// Updated callback signature:
+static void timeout_func(struct timer_list *t) {  // CORRECT
+    struct foo *obj = from_timer(obj, t, timer);
+    // ...
+}
+
+timer_setup(&obj->timer, timeout_func, 0);  // OK: signatures match
+```
+
+### Detection Rule
+
+When you see `timer_setup()` being added or `setup_timer()` being removed:
+1. **MANDATORY:** Check the callback function signature
+2. If callback has `(unsigned long data)` parameter → **incomplete conversion bug**
+3. If callback has `(struct timer_list *t)` parameter → correct
+4. The callback signature MUST match the timer setup function used
+
+This applies to backports and conversions. Changing only the setup call without updating the callback function causes type confusion and crashes.
+
 ## Quick Checks
 
 - Timer freed without sync cancel -> use-after-free
