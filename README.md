@@ -263,6 +263,51 @@ python kernel_review_agent.py HEAD --suse-kernel-source /path/to/kernel-source
 - Downstream commit: "Fix use after free (bsc#1259701)"
 - Enhanced with patch description: Full explanation of the UAF issue, root cause, fix rationale, and upstream commit reference
 
+### Hybrid Mode with Tool Calling (Enhanced Verification)
+
+**DEFAULT**: The agent now uses hybrid mode by default, combining pre-loaded context with on-demand tool calling for enhanced verification:
+
+```bash
+# Hybrid mode is enabled by default for OpenAI-compatible providers
+python kernel_review_agent.py HEAD --host localhost --port 8080
+
+# Disable tool calling and use standard mode only
+python kernel_review_agent.py HEAD --disable-tools
+
+# Explicitly enable (redundant, but supported)
+python kernel_review_agent.py HEAD --enable-tools
+```
+
+**How it works:**
+1. **Phase 1**: Standard review with pre-loaded context (categorize, analyze, verify)
+2. **Phase 2**: Tool calling for deep-dive verification of specific findings
+   - LLM uses `git_show` to read complete file contents
+   - LLM uses `git_grep` to find function definitions and callers
+   - Confirms bugs by inspecting actual code (not just diffs)
+
+**Benefits:**
+- **More accurate**: Catches bugs that static pattern matching might miss
+- **Better verification**: Confirms timer callback signatures, error handling, etc. with actual code inspection
+- **Same performance**: ~90s average (essentially identical to standard mode)
+- **More thorough**: Found 2 issues vs 1 in standard mode on benchmark test
+
+**Example verification:**
+```
+Standard mode: "Possible timer API conversion issue detected (pattern match)"
+Hybrid mode:   "Timer callback signature mismatch CONFIRMED:
+                - Found: void callback(unsigned long data)  
+                - Required: void callback(struct timer_list *t)
+                - Tool verified with git_grep inspection"
+```
+
+**Benchmark results** (commit 7172c6b1, qwen3.6:q4, 3 runs):
+- Standard: 92.01s average, 1 finding
+- Hybrid: 90.76s average, 2 findings ✅ **WINNER**
+
+**Requirements:**
+- Only works with OpenAI-compatible providers (`--provider openai` or `--provider ollama`)
+- Other providers fall back to standard mode automatically
+
 ### Performance Options
 
 ```bash

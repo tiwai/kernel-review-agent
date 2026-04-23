@@ -2,6 +2,7 @@
 
 from .base_client import LLMClient
 from .openai_client import OpenAIClient
+from .tool_enabled_client import ToolEnabledClient
 from .client_factory import create_llm_client, get_provider_from_args
 
 # Optional imports - only available if dependencies are installed
@@ -28,6 +29,7 @@ except ImportError:
 __all__ = [
     'LLMClient',
     'OpenAIClient',
+    'ToolEnabledClient',
     'AnthropicClient',
     'AnthropicVertexClient',
     'GoogleClient',

@@ -42,9 +42,9 @@ setup_module_path()
 
 import config
 from git_integration import CommitExtractor, MultiRepoExtractor
-from llm_integration import create_llm_client, get_provider_from_args
+from llm_integration import create_llm_client, get_provider_from_args, ToolEnabledClient
 from prompt_management import PromptLoader, SubsystemMatcher
-from analysis import ReviewWorkflow
+from analysis import ReviewWorkflow, HybridReviewWorkflow
 from output import ReportFormatter, MetadataGenerator
 
 
@@ -204,7 +204,24 @@ Examples:
         help="Path to upstream Linux kernel git repository (optional, for SUSE verification)"
     )
 
+    parser.add_argument(
+        "--enable-tools",
+        action="store_true",
+        default=True,
+        help="Enable hybrid mode with tool calling for enhanced verification (default: enabled for OpenAI-compatible providers)"
+    )
+
+    parser.add_argument(
+        "--disable-tools",
+        action="store_true",
+        help="Disable tool calling and use standard pre-loaded context only"
+    )
+
     args = parser.parse_args()
+
+    # Handle --disable-tools flag (overrides default)
+    if args.disable_tools:
+        args.enable_tools = False
 
     # Check if in git repository (temporary extractor for check)
     temp_git = CommitExtractor(verbose=args.verbose)
@@ -360,15 +377,61 @@ Examples:
             elif args.verbose:
                 print(f"SUSE upstream verification enabled")
 
-    workflow = ReviewWorkflow(
-        llm,
-        prompts,
-        matcher,
-        verbose=args.verbose,
-        debug=args.debug,
-        skip_verification=args.skip_verification,
-        suse_verifier=suse_verifier
-    )
+    # Create workflow (hybrid with tools or standard)
+    if args.enable_tools:
+        # Hybrid mode: pre-loaded context + tool calling (default)
+        if provider not in ['openai', 'ollama']:
+            if args.verbose or args.debug:
+                print(f"Note: Tool calling only supported for OpenAI-compatible providers", file=sys.stderr)
+                print(f"      Using standard workflow for {provider}", file=sys.stderr)
+            args.enable_tools = False
+        else:
+            if args.verbose:
+                print("Using hybrid mode: Pre-loaded context + tool calling for enhanced verification")
+            if args.debug:
+                print("[DEBUG] Hybrid mode: Tool calling enabled for deep-dive verification\n")
+
+            # Replace LLM client with tool-enabled version
+            git_dir = os.getcwd()
+            llm = ToolEnabledClient(
+                git_dir=git_dir,
+                host=args.host,
+                port=args.port,
+                api_key=args.api_key,
+                model=args.model,
+                verbose=args.verbose,
+                debug=args.debug,
+                dump_prompts=args.dump_prompts,
+                dump_dir=args.dump_dir
+            )
+
+            workflow = HybridReviewWorkflow(
+                llm,
+                prompts,
+                matcher,
+                verbose=args.verbose,
+                debug=args.debug,
+                skip_verification=args.skip_verification,
+                suse_verifier=suse_verifier,
+                enable_tools=True
+            )
+
+    if not args.enable_tools:
+        # Standard workflow (pre-loaded context only)
+        if args.verbose and args.disable_tools:
+            print("Using standard mode: Pre-loaded context only (tool calling disabled)")
+        elif args.verbose:
+            print("Using standard mode: Pre-loaded context only")
+
+        workflow = ReviewWorkflow(
+            llm,
+            prompts,
+            matcher,
+            verbose=args.verbose,
+            debug=args.debug,
+            skip_verification=args.skip_verification,
+            suse_verifier=suse_verifier
+        )
     formatter = ReportFormatter()
     metadata_gen = MetadataGenerator()
 
