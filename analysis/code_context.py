@@ -71,6 +71,34 @@ class CodeContextLoader:
             if callers:
                 context["callers"][func_name] = callers
 
+        # Extract and load timer/workqueue callback functions
+        # These are critical for detecting API misuse (e.g., setup_timer vs timer_setup signature mismatch)
+        timer_callbacks = self._extract_timer_callbacks_from_diff()
+
+        if self.debug and timer_callbacks:
+            print(f"[DEBUG] Found {len(timer_callbacks)} timer/workqueue callbacks")
+
+        for callback_info in timer_callbacks:
+            callback_name = callback_info['name']
+            file_path = callback_info['file']
+
+            if self.debug:
+                print(f"[DEBUG] Loading timer callback: {callback_name} in {file_path}")
+
+            # Load callback function definition
+            current_def = self._load_function_definition(file_path, callback_name, self.commit.sha)
+            parent_def = self._load_function_definition(file_path, callback_name, f"{self.commit.sha}^")
+
+            if current_def or parent_def:
+                # Mark as timer callback for special attention
+                context["function_definitions"][callback_name] = {
+                    "current": current_def,
+                    "parent": parent_def,
+                    "file": file_path,
+                    "is_timer_callback": True,
+                    "timer_api": callback_info.get('api')
+                }
+
         # Load related headers
         for file_path in self.commit.files:
             if file_path.endswith('.h'):
@@ -128,6 +156,69 @@ class CodeContextLoader:
                 unique_functions.append(func)
 
         return unique_functions
+
+    def _extract_timer_callbacks_from_diff(self) -> List[Dict]:
+        """
+        Extract timer/workqueue callback functions mentioned in timer setup calls.
+
+        Looks for patterns like:
+        - timer_setup(&obj->timer, callback_func, flags)
+        - setup_timer(&obj->timer, callback_func, data)
+        - hrtimer_setup(&obj->timer, callback_func, ...)
+        - INIT_DELAYED_WORK(&obj->work, callback_func)
+        - INIT_WORK(&obj->work, callback_func)
+
+        Returns:
+            List of dicts with callback name, file path, and API used
+        """
+        callbacks = []
+        current_file = None
+
+        # Patterns for timer/work setup functions
+        setup_patterns = [
+            (r'timer_setup\s*\(\s*[^,]+,\s*(\w+)', 'timer_setup'),
+            (r'setup_timer\s*\(\s*[^,]+,\s*(\w+)', 'setup_timer'),
+            (r'hrtimer_setup\s*\(\s*[^,]+,\s*(\w+)', 'hrtimer_setup'),
+            (r'INIT_DELAYED_WORK\s*\(\s*[^,]+,\s*(\w+)', 'INIT_DELAYED_WORK'),
+            (r'INIT_WORK\s*\(\s*[^,]+,\s*(\w+)', 'INIT_WORK'),
+            (r'queue_work\w*\s*\([^,]+,\s*[^,]+,\s*(\w+)', 'queue_work'),
+        ]
+
+        for line in self.commit.diff.split('\n'):
+            # Track current file
+            if line.startswith('diff --git'):
+                match = re.search(r'b/(.+)$', line)
+                if match:
+                    current_file = match.group(1)
+
+            # Look for timer/work setup in added or context lines
+            elif current_file and (line.startswith('+') or line.startswith(' ')):
+                # Remove the diff prefix
+                code_line = line[1:] if line[0] in ['+', ' '] else line
+
+                # Check each pattern
+                for pattern, api_name in setup_patterns:
+                    match = re.search(pattern, code_line)
+                    if match:
+                        callback_name = match.group(1)
+                        # Avoid false positives (NULL, macros, etc.)
+                        if callback_name and callback_name not in ['NULL', '0', 'null']:
+                            callbacks.append({
+                                "name": callback_name,
+                                "file": current_file,
+                                "api": api_name
+                            })
+
+        # Remove duplicates
+        seen = set()
+        unique_callbacks = []
+        for cb in callbacks:
+            key = (cb['name'], cb['file'])
+            if key not in seen:
+                seen.add(key)
+                unique_callbacks.append(cb)
+
+        return unique_callbacks
 
     def _load_function_definition(self, file_path: str, func_name: str, commit_ref: str) -> Optional[str]:
         """
@@ -261,6 +352,19 @@ class CodeContextLoader:
             sections.append("="*70)
             for func_name, func_data in context["function_definitions"].items():
                 sections.append(f"\nFunction: {func_name} in {func_data['file']}")
+
+                # Highlight timer/workqueue callbacks
+                if func_data.get("is_timer_callback"):
+                    api = func_data.get("timer_api", "unknown")
+                    sections.append(f"⚠️  TIMER/WORK CALLBACK - Used with {api}")
+                    sections.append("    CHECK: Callback signature MUST match the API requirements!")
+                    if api == "timer_setup":
+                        sections.append("    timer_setup() requires: void callback(struct timer_list *t)")
+                    elif api == "setup_timer":
+                        sections.append("    setup_timer() requires: void callback(unsigned long data)")
+                    elif api == "hrtimer_setup":
+                        sections.append("    hrtimer_setup() requires: enum hrtimer_restart callback(struct hrtimer *timer)")
+
                 sections.append("-"*70)
 
                 if func_data["parent"]:
