@@ -247,27 +247,6 @@ Examples:
 
     # Override token limits if --max-tokens specified
     if args.max_tokens:
-        # Warn about excessively large max_tokens (likely to cause timeouts)
-        if args.max_tokens > 20000:
-            print(f"\n{'='*70}", file=sys.stderr)
-            print(f"WARNING: max_tokens={args.max_tokens} is very large!", file=sys.stderr)
-            print(f"{'='*70}", file=sys.stderr)
-            print(f"", file=sys.stderr)
-            print(f"Large max_tokens can cause problems:", file=sys.stderr)
-            print(f"  - Very slow generation (may take 20+ minutes per commit)", file=sys.stderr)
-            print(f"  - Timeout after {config.LLM_TIMEOUT}s ({config.LLM_TIMEOUT//60} min)", file=sys.stderr)
-            if config.MAX_RETRIES > 1:
-                total_time = config.LLM_TIMEOUT * config.MAX_RETRIES
-                print(f"  - Retry loop ({config.MAX_RETRIES} retries = {total_time//60} min total)", file=sys.stderr)
-            print(f"  - Excessive verbosity without quality improvement", file=sys.stderr)
-            print(f"", file=sys.stderr)
-            print(f"Recommended max_tokens:", file=sys.stderr)
-            print(f"  - Standard: 8,000-16,000 (default: {config.DEFAULT_MAX_TOKENS})", file=sys.stderr)
-            print(f"  - Maximum reasonable: 20,000", file=sys.stderr)
-            print(f"", file=sys.stderr)
-            print(f"Consider removing --max-tokens to use defaults, or use 8000-16000.", file=sys.stderr)
-            print(f"{'='*70}\n", file=sys.stderr)
-
         config.DEFAULT_MAX_TOKENS = args.max_tokens
         config.CATEGORIZE_MAX_TOKENS = args.max_tokens
         config.ANALYZE_MAX_TOKENS = args.max_tokens
