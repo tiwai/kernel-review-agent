@@ -179,7 +179,52 @@ out:
 - Assuming all shared data needs traditional locks
 - Not tracing lock releases in complex control flow
 
-### 5. Use-After-Free Confusion
+### 5. Reference Counting and Use-After-Free
+
+#### 5a. Reference Counter Analysis
+
+**Before reporting a UAF in code with reference counting:**
+
+**CRITICAL: Verify the reference counting model:**
+1. Find the initial value of the reference counter
+   - Output: "ref_ctr initialized to X at line Y"
+2. Find ALL increment operations
+   - Output: list each increment with location and condition
+3. Find ALL decrement operations
+   - Output: list each decrement with location
+4. Trace reference count through the problematic path
+   - Output: step-by-step count showing when it can reach 0
+
+**Example: autofs waitqueue reference counting**
+```c
+// Incorrect UAF analysis: assumes wait_ctr can reach 0
+wq->wait_ctr = 2;      // ← Initial value is 2, not 1!
+...
+wq->wait_ctr++;        // Waiter joins: ctr = 3
+...
+wake_up(&wq->queue);   // Wake waiter
+if (!--wq->wait_ctr)   // Decrement: 3 → 2 (doesn't free!)
+    kfree(wq);
+// Woken thread accesses wq → SAFE (not freed yet!)
+```
+
+**Common FALSE POSITIVE pattern:**
+- Assuming reference counter starts at 1
+- Not counting all increments (multiple waiters/users)
+- Not recognizing that counter > 1 prevents premature free
+
+**Verification checklist:**
+- [ ] I found the initial reference count value
+- [ ] I traced ALL increments (not just one code path)
+- [ ] I verified the count can actually reach 0 at the free point
+- [ ] I confirmed the free happens before the access
+
+**If reference count > 1 initially:**
+- Multiple decrements needed before free
+- First decrement usually doesn't free (count > 0 remains)
+- UAF only possible if ALL references released before access
+
+#### 5b. Use-After-Free Confusion
 **Distinguish between**:
 - Use-after-free (accessing freed memory) ← Report this
 - Use-before-free (using then freeing) ← Don't report

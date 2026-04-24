@@ -87,12 +87,20 @@ class HybridReviewWorkflow(ReviewWorkflow):
         lock_findings = self._verify_lock_issues(commit, findings)
         verified.extend(lock_findings)
 
-        # Add other findings (not timer or lock-related)
+        # Check for use-after-free issues (verify reference counting)
+        uaf_findings = self._verify_uaf_issues(commit, findings)
+        verified.extend(uaf_findings)
+
+        # Add other findings (not timer, lock, or UAF-related)
         excluded_types = ['timer-api-conversion', 'timer-callback-signature',
-                          'deadlock', 'double-lock', 'missing-lock', 'lock-order']
+                          'deadlock', 'double-lock', 'missing-lock', 'lock-order',
+                          'use-after-free', 'uaf', 'double-free']
         for finding in findings:
             ftype = finding.get('type', '')
-            if ftype not in excluded_types and 'lock' not in ftype.lower():
+            if (ftype not in excluded_types and
+                'lock' not in ftype.lower() and
+                'use-after-free' not in finding.get('message', '').lower() and
+                'uaf' not in ftype.lower()):
                 verified.append(finding)
 
         return verified
@@ -305,6 +313,134 @@ Be concise but include the lock trace."""
                 if self.debug:
                     print(f"[DEBUG] Lock verification failed for {func_name}: {e}")
                 # On error, keep original finding
+                verified.append(finding)
+
+        return verified
+
+    def _verify_uaf_issues(self, commit: Commit, findings: List[Dict]) -> List[Dict]:
+        """
+        Use tool calling to verify use-after-free issues.
+
+        Common false positive: Not checking the initial value of reference counters.
+        Many objects start with refcount > 1, so first decrement doesn't free.
+        """
+        # Find UAF-related findings
+        uaf_related = [
+            f for f in findings
+            if 'use-after-free' in f.get('type', '').lower() or
+               'uaf' in f.get('type', '').lower() or
+               'use-after-free' in f.get('message', '').lower() or
+               ('free' in f.get('message', '').lower() and 'race' in f.get('message', '').lower())
+        ]
+
+        if not uaf_related:
+            return []
+
+        if self.verbose:
+            print(f"  Verifying {len(uaf_related)} use-after-free finding(s) with tools...")
+
+        verified = []
+
+        for finding in uaf_related:
+            # Extract relevant variable/struct name
+            # Look for patterns like "wq", "obj", "ptr", etc.
+            var_match = re.search(r'\b([a-z_]+)(?:->|\.|\.)', finding.get('evidence', ''))
+            if not var_match:
+                var_match = re.search(r'(?:free|kfree|put_)\(([a-z_][a-z0-9_]*)\)', finding.get('evidence', ''))
+
+            if not var_match:
+                # Can't extract variable - keep finding
+                verified.append(finding)
+                continue
+
+            var_name = var_match.group(1)
+
+            # Look for reference counter patterns
+            ref_patterns = ['wait_ctr', 'refcnt', 'ref_count', 'kref', 'count', 'users']
+            ref_counter = None
+            for pattern in ref_patterns:
+                if pattern in commit.diff or pattern in finding.get('evidence', ''):
+                    ref_counter = pattern
+                    break
+
+            if not ref_counter:
+                # No obvious reference counter - keep finding
+                verified.append(finding)
+                continue
+
+            if self.verbose:
+                print(f"    Checking UAF: {var_name} (refcount: {ref_counter})")
+
+            system_prompt = """You are verifying a potential use-after-free issue in Linux kernel code.
+
+CRITICAL: Many objects use reference counting starting at 2 or higher.
+
+Before reporting UAF, you MUST:
+1. Find the INITIAL value of the reference counter
+2. Find ALL increment operations
+3. Find ALL decrement/free operations
+4. Trace the reference count to verify it can actually reach 0 before the access
+
+DO NOT assume refcount starts at 1 or 0 - verify the initialization!"""
+
+            user_prompt = f"""A potential use-after-free was reported:
+
+ISSUE: {finding.get('message', '')}
+
+EVIDENCE: {finding.get('evidence', '')}
+
+DIFF:
+{commit.diff[:2000]}
+
+Task: Verify if this is a real UAF or false positive.
+
+1. Use git_show to read the file containing `{var_name}`
+2. Find the initialization of reference counter `{ref_counter}`
+   - What is the INITIAL value? (often 2, not 1!)
+3. Find ALL places that increment `{ref_counter}`
+4. Trace reference count through the code path:
+   - Initial: {ref_counter} = ?
+   - After increments: {ref_counter} = ?
+   - After first decrement: {ref_counter} = ?
+   - Can it actually reach 0 at the free point?
+
+Answer: REAL_UAF or FALSE_POSITIVE (with reference count trace)
+
+Include the reference count trace showing initial value and all changes.
+Be concise but show the trace."""
+
+            try:
+                response = self.llm.analyze_with_tools(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    max_iterations=8,
+                    max_tokens=3000
+                )
+
+                response_lower = response.lower()
+
+                # Look for reference count analysis
+                if 'false_positive' in response_lower or 'false positive' in response_lower:
+                    if self.verbose:
+                        print(f"      → False positive: {var_name} - refcount prevents UAF")
+                elif ('initial' in response_lower and
+                      any(str(n) in response for n in [' = 2', '= 3', 'starts at 2', 'starts at 3'])):
+                    # Response mentions initial value > 1 - likely false positive
+                    if self.verbose:
+                        print(f"      → False positive: {var_name} - refcount starts > 1")
+                elif 'real_uaf' in response_lower and 'false' not in response_lower:
+                    verified.append(finding)
+                    if self.verbose:
+                        print(f"      → BUG CONFIRMED: {var_name}")
+                else:
+                    # Uncertain - keep finding
+                    if self.verbose:
+                        print(f"      → Could not verify: {var_name}")
+                    verified.append(finding)
+
+            except Exception as e:
+                if self.debug:
+                    print(f"[DEBUG] UAF verification failed for {var_name}: {e}")
                 verified.append(finding)
 
         return verified
