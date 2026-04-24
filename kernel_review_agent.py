@@ -492,6 +492,7 @@ Examples:
                     os.makedirs(args.output_dir)
 
                 # Clean up old review files in patch mode (always overwrite)
+                # (do this AFTER review succeeds but BEFORE writing new files)
                 old_files = [
                     os.path.join(args.output_dir, "review-metadata.json"),
                     os.path.join(args.output_dir, "review-inline.txt")
@@ -566,19 +567,6 @@ Examples:
                     skipped += 1
                     continue
 
-                # If --force and directory exists, clean up old review files
-                if args.force and os.path.exists(commit_dir):
-                    old_files = [
-                        os.path.join(commit_dir, "review-metadata.json"),
-                        os.path.join(commit_dir, "review-pre-verification.json"),
-                        os.path.join(commit_dir, "review-inline.txt")
-                    ]
-                    for old_file in old_files:
-                        if os.path.exists(old_file):
-                            os.remove(old_file)
-                            if args.debug:
-                                print(f"[DEBUG] Removed stale file: {old_file}")
-
                 # Show progress for multiple commits
                 if total_items > 1 and args.verbose:
                     print(f"[{i}/{total_items}] Processing commit {sha_short}...")
@@ -593,6 +581,20 @@ Examples:
 
                 # Create output directory after successful review
                 os.makedirs(commit_dir, exist_ok=True)
+
+                # If --force and directory exists, clean up old review files
+                # (do this AFTER review succeeds but BEFORE writing new files)
+                if args.force and os.path.exists(commit_dir):
+                    old_files = [
+                        os.path.join(commit_dir, "review-metadata.json"),
+                        os.path.join(commit_dir, "review-pre-verification.json"),
+                        os.path.join(commit_dir, "review-inline.txt")
+                    ]
+                    for old_file in old_files:
+                        if os.path.exists(old_file):
+                            os.remove(old_file)
+                            if args.debug:
+                                print(f"[DEBUG] Removed stale file: {old_file}")
 
                 # Generate pre-verification metadata if SUSE verification was done
                 if result.suse_verification:
