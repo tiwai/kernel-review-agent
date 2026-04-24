@@ -523,7 +523,7 @@ Be concise but show the trace."""
         parts.append(f"Upstream commit: {comparison.upstream_commit[:12]}")
         parts.append("")
 
-parts.append("**IMPORTANT**: This is a backport from upstream.")
+        parts.append("**IMPORTANT**: This is a backport from upstream.")
         parts.append("The downstream patch differs from upstream - verify the backport is correct!")
         parts.append("")
 
