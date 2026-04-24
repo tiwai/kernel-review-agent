@@ -94,7 +94,76 @@ the code behaves a certain way, you MUST verify against the actual implementatio
    - A bug dismissed based on incorrect documentation is worse than a false positive
 
 ### 4. Locking False Positives
-**Before reporting** a locking issue:
+
+#### 4a. Deadlock Analysis Within a Function
+
+**CRITICAL**: Before reporting a deadlock (double-lock on same semaphore/mutex):
+
+**Trace lock state through ALL code paths**:
+1. Find ALL lock acquisitions: down_write/down_read/mutex_lock/spin_lock
+2. Find ALL lock releases: up_write/up_read/mutex_unlock/spin_unlock
+3. Trace lock state at EVERY goto/jump target
+4. Verify lock is ACTUALLY HELD at the problematic point
+
+**Output format** (REQUIRED for deadlock reports):
+```
+Lock trace:
+  Line X: down_write(&lock)         [LOCKED]
+  Line Y: if (condition)             [LOCKED]
+  Line Z:   up_write(&lock)          [UNLOCKED] ← Release!
+  Line A:   function_call()          [UNLOCKED]
+  Line B:   goto label               [UNLOCKED]
+  Line C: label:
+  Line D:   down_write(&lock)        [LOCKED] ← Reacquire OK
+```
+
+**Common FALSE POSITIVE pattern**:
+```c
+down_write(&sem);
+if (special_case) {
+    up_write(&sem);        // ← DON'T MISS THIS!
+    call_function();
+    goto cleanup;
+}
+// ... normal path with lock held ...
+cleanup:
+    down_write(&sem);      // ← NOT a deadlock - lock was released above!
+```
+
+**If you cannot trace the lock state** through all paths:
+- DO NOT report "deadlock"
+- Instead report "Potential locking issue - manual verification needed"
+- Explain: "Could not verify lock state through all code paths"
+
+**Example of FALSE POSITIVE** (UDF filesystem pattern):
+```c
+// This is NOT a deadlock!
+down_write(&iinfo->i_data_sem);
+
+if (iinfo->i_alloc_type == ICBTAG_FLAG_AD_IN_ICB) {
+    up_write(&iinfo->i_data_sem);  // ← Lock released here!
+    retval = __generic_file_write_iter(iocb, from);
+    goto out;  // Jump to out with lock NOT held
+}
+
+// Normal path - lock still held
+udf_expand_file_adinicb(inode);
+up_write(&iinfo->i_data_sem);
+return;
+
+out:
+    down_write(&iinfo->i_data_sem);  // ← Reacquire for cleanup (OK!)
+    // ... cleanup with lock held ...
+    up_write(&iinfo->i_data_sem);
+    return retval;
+```
+
+**Incorrect analysis**: "Deadlock - lock acquired, then acquired again at out:"
+**Correct analysis**: "Not a bug - lock is released before goto out, then reacquired"
+
+#### 4b. Missing Lock Analysis (Inter-Function)
+
+**Before reporting** a missing lock:
 - Check ALL calling functions for held locks
   - Output: list each caller and locks it holds (e.g., "caller() holds mutex_x at file:line")
 - Trace up 2-3 levels to find lock context
@@ -108,6 +177,7 @@ the code behaves a certain way, you MUST verify against the actual implementatio
 - Missing that caller holds the required lock
 - Not recognizing RCU-protected sections
 - Assuming all shared data needs traditional locks
+- Not tracing lock releases in complex control flow
 
 ### 5. Use-After-Free Confusion
 **Distinguish between**:

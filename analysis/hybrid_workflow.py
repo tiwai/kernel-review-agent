@@ -83,9 +83,16 @@ class HybridReviewWorkflow(ReviewWorkflow):
         timer_findings = self._verify_timer_api_issues(commit, findings)
         verified.extend(timer_findings)
 
-        # Add other findings (not timer-related)
+        # Check for locking issues (deadlocks, missing locks)
+        lock_findings = self._verify_lock_issues(commit, findings)
+        verified.extend(lock_findings)
+
+        # Add other findings (not timer or lock-related)
+        excluded_types = ['timer-api-conversion', 'timer-callback-signature',
+                          'deadlock', 'double-lock', 'missing-lock', 'lock-order']
         for finding in findings:
-            if finding.get('type') not in ['timer-api-conversion', 'timer-callback-signature']:
+            ftype = finding.get('type', '')
+            if ftype not in excluded_types and 'lock' not in ftype.lower():
                 verified.append(finding)
 
         return verified
@@ -186,6 +193,119 @@ Be concise."""
                     if callback_name in f.get('evidence', '') or callback_name in f.get('message', ''):
                         verified.append(f)
                         break
+
+        return verified
+
+    def _verify_lock_issues(self, commit: Commit, findings: List[Dict]) -> List[Dict]:
+        """
+        Use tool calling to verify locking issues (deadlocks, missing locks).
+
+        Common false positive: Missing an unlock (up_write/mutex_unlock) that
+        happens between lock acquire and the supposed deadlock point.
+        """
+        # Find lock-related findings
+        lock_related = [
+            f for f in findings
+            if any(word in f.get('type', '').lower() for word in ['lock', 'deadlock']) or
+               any(word in f.get('message', '').lower() for word in ['deadlock', 'double-lock', 'recursive lock'])
+        ]
+
+        if not lock_related:
+            return []
+
+        if self.verbose:
+            print(f"  Verifying {len(lock_related)} lock-related finding(s) with tools...")
+
+        verified = []
+
+        for finding in lock_related:
+            # Extract function name from finding
+            func_match = re.search(r'(?:in function|function) [`\']?(\w+)[`\']?', finding.get('message', ''))
+            if not func_match:
+                # Try to extract from evidence
+                func_match = re.search(r'(\w+)\s*\(', finding.get('evidence', ''))
+
+            if not func_match:
+                # Can't verify without function name - keep original finding
+                verified.append(finding)
+                continue
+
+            func_name = func_match.group(1)
+
+            if self.verbose:
+                print(f"    Checking locking in: {func_name}")
+
+            system_prompt = """You are verifying a potential locking issue in Linux kernel code.
+
+CRITICAL REQUIREMENTS:
+1. You MUST trace lock state through ALL code paths
+2. You MUST show lock acquisitions (down_write/mutex_lock/spin_lock)
+3. You MUST show lock releases (up_write/mutex_unlock/spin_unlock)
+4. You MUST verify the lock is ACTUALLY HELD at the problematic point
+
+DO NOT report a deadlock unless you can prove the lock is held at both acquisition points."""
+
+            user_prompt = f"""A potential locking issue was reported:
+
+ISSUE: {finding.get('message', '')}
+
+DIFF:
+{commit.diff[:2000]}
+
+Task: Verify if this is a real bug or false positive.
+
+1. Use git_show to read the COMPLETE function `{func_name}`
+2. Find ALL lock operations:
+   - Acquisitions: down_write, down_read, mutex_lock, spin_lock
+   - Releases: up_write, up_read, mutex_unlock, spin_unlock
+3. Trace lock state through the code path to the problematic point
+4. Show a lock trace like:
+   Line X: down_write(&lock)    [LOCKED]
+   Line Y: if (condition)        [LOCKED]
+   Line Z:   up_write(&lock)     [UNLOCKED] ← Release
+   Line A:   function()          [UNLOCKED]
+   Line B:   goto label          [UNLOCKED]
+   Line C: label: down_write()   [LOCKED] ← Reacquire OK
+
+Answer: REAL_BUG or FALSE_POSITIVE (with lock trace)
+
+Be concise but include the lock trace."""
+
+            try:
+                response = self.llm.analyze_with_tools(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    max_iterations=6,
+                    max_tokens=3000
+                )
+
+                # Check response
+                response_lower = response.lower()
+
+                if 'real_bug' in response_lower and 'false' not in response_lower:
+                    # Bug confirmed - keep finding
+                    verified.append(finding)
+                    if self.verbose:
+                        print(f"      → BUG CONFIRMED: {func_name}")
+                elif 'false_positive' in response_lower or 'false positive' in response_lower:
+                    # False positive - discard
+                    if self.verbose:
+                        print(f"      → False positive: {func_name} - lock is released")
+                elif 'unlock' in response_lower or 'up_write' in response_lower or 'released' in response_lower:
+                    # Response mentions unlock - likely false positive
+                    if self.verbose:
+                        print(f"      → False positive: {func_name} - lock release detected")
+                else:
+                    # Uncertain - keep finding but mark as unverified
+                    if self.verbose:
+                        print(f"      → Could not verify: {func_name}")
+                    verified.append(finding)
+
+            except Exception as e:
+                if self.debug:
+                    print(f"[DEBUG] Lock verification failed for {func_name}: {e}")
+                # On error, keep original finding
+                verified.append(finding)
 
         return verified
 
