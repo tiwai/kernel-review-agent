@@ -4,6 +4,7 @@ import re
 from typing import List, Dict, Optional
 
 from .workflow import ReviewWorkflow, ReviewResult
+from .backport_verifier import BackportVerifier, BackportComparison
 from git_integration import Commit
 from llm_integration import ToolEnabledClient
 import config
@@ -22,6 +23,7 @@ class HybridReviewWorkflow(ReviewWorkflow):
         llm_client: ToolEnabledClient,
         *args,
         enable_tools: bool = True,
+        upstream_repo=None,
         **kwargs
     ):
         """
@@ -30,10 +32,16 @@ class HybridReviewWorkflow(ReviewWorkflow):
         Args:
             llm_client: ToolEnabledClient instance
             enable_tools: Enable tool calling for deep-dive checks
+            upstream_repo: MultiRepoExtractor for upstream Linux kernel (for backport verification)
             *args, **kwargs: Passed to ReviewWorkflow
         """
         super().__init__(llm_client, *args, **kwargs)
         self.enable_tools = enable_tools
+        self.backport_verifier = BackportVerifier(
+            upstream_repo=upstream_repo,
+            verbose=kwargs.get('verbose', False),
+            debug=kwargs.get('debug', False)
+        )
 
         if not isinstance(llm_client, ToolEnabledClient):
             raise TypeError("HybridReviewWorkflow requires ToolEnabledClient")
@@ -42,14 +50,51 @@ class HybridReviewWorkflow(ReviewWorkflow):
         """
         Execute review with hybrid approach.
 
+        0. Check backport quality (compare with upstream if available)
         1. Run standard workflow (pre-loaded context)
         2. If findings detected, use tool calling for deep-dive verification
         """
-        # Run standard workflow first
+        # Phase 0: Backport verification
+        backport_comparison = None
+        backport_info_for_llm = None
+
+        if commit.upstream_commit:
+            if self.verbose:
+                print(f"\n=== Phase 0: Backport Verification ===")
+                print(f"  Upstream commit: {commit.upstream_commit[:12]}")
+
+            backport_comparison = self.backport_verifier.verify_backport(commit)
+
+            if backport_comparison and backport_comparison.has_upstream:
+                if self.verbose:
+                    print(f"  {backport_comparison.summary}")
+
+                # Prepare backport info for LLM if differences found
+                if backport_comparison.differences_found:
+                    backport_info_for_llm = self._format_backport_info_for_llm(backport_comparison)
+
+                    if backport_comparison.needs_deep_review and self.verbose:
+                        print(f"  → Deep review required - backport differences detected")
+
+        # Phase 1: Run standard workflow (with backport info if available)
         if self.verbose:
-            print("\n=== Phase 1: Standard Review (Pre-loaded Context) ===")
+            phase_num = "1" if commit.upstream_commit else ""
+            print(f"\n=== Phase {phase_num}: Standard Review (Pre-loaded Context) ===")
+
+        # Temporarily store backport info for use in the review
+        original_commit_message = commit.message
+        if backport_info_for_llm:
+            # Append backport analysis to commit message for LLM context
+            commit.message = commit.message + "\n\n" + backport_info_for_llm
 
         result = super().execute_review(commit)
+
+        # Restore original commit message
+        commit.message = original_commit_message
+
+        # Add backport comparison to result metadata
+        if backport_comparison and backport_comparison.has_upstream:
+            result.backport_comparison = backport_comparison
 
         # If tool calling disabled or no findings, return as-is
         if not self.enable_tools or not result.findings:
@@ -464,3 +509,81 @@ Be concise but show the trace."""
                             callbacks.append(callback)
 
         return callbacks
+
+    def _format_backport_info_for_llm(self, comparison: BackportComparison) -> str:
+        """
+        Format backport comparison for LLM context.
+
+        Returns a clear description of the backport differences that the LLM
+        should pay attention to during review.
+        """
+        parts = []
+
+        parts.append("=== BACKPORT ANALYSIS ===")
+        parts.append(f"Upstream commit: {comparison.upstream_commit[:12]}")
+        parts.append("")
+
+parts.append("**IMPORTANT**: This is a backport from upstream.")
+        parts.append("The downstream patch differs from upstream - verify the backport is correct!")
+        parts.append("")
+
+        if comparison.file_path_changes:
+            parts.append("File Path Differences:")
+            for upstream_path, downstream_path in comparison.file_path_changes:
+                parts.append(f"  - Upstream:   {upstream_path}")
+                parts.append(f"    Downstream: {downstream_path}")
+            parts.append("")
+
+        if comparison.line_number_shifts:
+            parts.append("Line Number Shifts:")
+            for shift in comparison.line_number_shifts[:5]:  # Limit to top 5
+                parts.append(
+                    f"  - {shift['file']}: "
+                    f"upstream line {shift['upstream_line']} → "
+                    f"downstream line {shift['downstream_line']} "
+                    f"(shift: {shift['shift']} lines {shift['direction']})"
+                )
+            if len(comparison.line_number_shifts) > 5:
+                parts.append(f"  ... and {len(comparison.line_number_shifts) - 5} more shifts")
+            parts.append("")
+
+        if comparison.context_mismatches:
+            parts.append("Context Mismatches (surrounding code differs):")
+            for mismatch in comparison.context_mismatches[:3]:  # Limit to top 3
+                parts.append(
+                    f"  - {mismatch['file']}: "
+                    f"line {mismatch['downstream_line']} "
+                    f"(match score: {mismatch['match_score']:.1%})"
+                )
+            if len(comparison.context_mismatches) > 3:
+                parts.append(f"  ... and {len(comparison.context_mismatches) - 3} more mismatches")
+            parts.append("")
+
+        if comparison.missing_hunks:
+            parts.append("Missing Hunks (in upstream but not downstream):")
+            for hunk in comparison.missing_hunks[:5]:
+                parts.append(f"  - {hunk}")
+            if len(comparison.missing_hunks) > 5:
+                parts.append(f"  ... and {len(comparison.missing_hunks) - 5} more")
+            parts.append("")
+
+        if comparison.extra_hunks:
+            parts.append("Extra Hunks (in downstream but not upstream):")
+            for hunk in comparison.extra_hunks[:5]:
+                parts.append(f"  - {hunk}")
+            if len(comparison.extra_hunks) > 5:
+                parts.append(f"  ... and {len(comparison.extra_hunks) - 5} more")
+            parts.append("")
+
+        if comparison.needs_deep_review:
+            parts.append("**ACTION REQUIRED**: Deep verification needed!")
+            parts.append("Verify that:")
+            parts.append("  1. Patch applied to functionally equivalent code location")
+            parts.append("  2. All critical parts of upstream patch are present")
+            parts.append("  3. Logic/semantics match upstream intent")
+            parts.append("  4. No missing error handling or cleanup code")
+            parts.append("")
+
+        parts.append("=== END BACKPORT ANALYSIS ===")
+
+        return "\n".join(parts)

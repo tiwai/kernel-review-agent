@@ -247,6 +247,27 @@ Examples:
 
     # Override token limits if --max-tokens specified
     if args.max_tokens:
+        # Warn about excessively large max_tokens (likely to cause timeouts)
+        if args.max_tokens > 20000:
+            print(f"\n{'='*70}", file=sys.stderr)
+            print(f"WARNING: max_tokens={args.max_tokens} is very large!", file=sys.stderr)
+            print(f"{'='*70}", file=sys.stderr)
+            print(f"", file=sys.stderr)
+            print(f"Large max_tokens can cause problems:", file=sys.stderr)
+            print(f"  - Very slow generation (may take 20+ minutes per commit)", file=sys.stderr)
+            print(f"  - Timeout after {config.LLM_TIMEOUT}s ({config.LLM_TIMEOUT//60} min)", file=sys.stderr)
+            if config.MAX_RETRIES > 1:
+                total_time = config.LLM_TIMEOUT * config.MAX_RETRIES
+                print(f"  - Retry loop ({config.MAX_RETRIES} retries = {total_time//60} min total)", file=sys.stderr)
+            print(f"  - Excessive verbosity without quality improvement", file=sys.stderr)
+            print(f"", file=sys.stderr)
+            print(f"Recommended max_tokens:", file=sys.stderr)
+            print(f"  - Standard: 8,000-16,000 (default: {config.DEFAULT_MAX_TOKENS})", file=sys.stderr)
+            print(f"  - Maximum reasonable: 20,000", file=sys.stderr)
+            print(f"", file=sys.stderr)
+            print(f"Consider removing --max-tokens to use defaults, or use 8000-16000.", file=sys.stderr)
+            print(f"{'='*70}\n", file=sys.stderr)
+
         config.DEFAULT_MAX_TOKENS = args.max_tokens
         config.CATEGORIZE_MAX_TOKENS = args.max_tokens
         config.ANALYZE_MAX_TOKENS = args.max_tokens
@@ -353,8 +374,27 @@ Examples:
 
     # Initialize SUSE verifier if configured (skip in patch mode)
     suse_verifier = None
+    upstream_repo_extractor = None
     if not args.patch:
         upstream_linux = args.upstream_linux or config.UPSTREAM_LINUX_REPO
+
+        # Create upstream repository extractor for backport verification
+        if upstream_linux:
+            upstream_repo_extractor = MultiRepoExtractor(
+                repo_path=upstream_linux,
+                verbose=args.verbose,
+                debug=args.debug
+            )
+
+            if upstream_repo_extractor.is_available():
+                if args.verbose:
+                    print(f"Upstream Linux repository available for backport verification")
+                if args.debug:
+                    print(f"[DEBUG] Upstream repo: {upstream_linux}")
+            else:
+                if args.debug:
+                    print(f"[DEBUG] Upstream Linux repository not available: {upstream_linux}")
+                upstream_repo_extractor = None
 
         if suse_kernel_source:
             if args.debug:
@@ -413,7 +453,8 @@ Examples:
                 debug=args.debug,
                 skip_verification=args.skip_verification,
                 suse_verifier=suse_verifier,
-                enable_tools=True
+                enable_tools=True,
+                upstream_repo=upstream_repo_extractor
             )
 
     if not args.enable_tools:

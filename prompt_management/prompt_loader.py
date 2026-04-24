@@ -71,6 +71,14 @@ Focus exclusively on finding potential regressions in the code changes.
         """Load false-positive-guide.md (verification checks)."""
         return self.load_file("false-positive-guide.md")
 
+    def load_backport_verification_guide(self) -> str:
+        """Load backport-verification.md (backport quality checks)."""
+        try:
+            return self.load_file("backport-verification.md")
+        except RuntimeError:
+            # Backport guide is optional
+            return ""
+
     def load_callstack_guide(self) -> str:
         """Load callstack.md (bidirectional analysis)."""
         return self.load_file("callstack.md")
@@ -121,6 +129,7 @@ Focus exclusively on finding potential regressions in the code changes.
         self,
         include_technical_patterns: bool = True,
         include_false_positive_guide: bool = False,
+        include_backport_guide: bool = False,
         subsystem_guides: List[str] = None
     ) -> str:
         """
@@ -129,6 +138,7 @@ Focus exclusively on finding potential regressions in the code changes.
         Args:
             include_technical_patterns: Include bug pattern guide
             include_false_positive_guide: Include verification guide
+            include_backport_guide: Include backport verification guide
             subsystem_guides: List of subsystem guide filenames to include
 
         Returns:
@@ -141,6 +151,11 @@ Focus exclusively on finding potential regressions in the code changes.
 
         if include_false_positive_guide:
             parts.append("\n# FALSE POSITIVE PREVENTION\n\n" + self.load_false_positive_guide())
+
+        if include_backport_guide:
+            backport_content = self.load_backport_verification_guide()
+            if backport_content:
+                parts.append("\n# BACKPORT VERIFICATION\n\n" + backport_content)
 
         if subsystem_guides:
             subsystem_content = self.load_subsystem_guides(subsystem_guides)

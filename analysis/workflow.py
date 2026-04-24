@@ -20,6 +20,7 @@ class ReviewResult:
     summary: str
     subsystems_loaded: List[str]
     suse_verification: Optional[Dict] = None  # SUSE upstream verification result
+    backport_comparison: Optional[Dict] = None  # Backport quality comparison
 
 
 class ReviewWorkflow:
@@ -396,9 +397,13 @@ Return ONLY a JSON array of changes, no other text:
             List of potential findings
         """
         # Build comprehensive system prompt with subsystem guides
+        # Include backport guide if this is a backport with upstream reference
+        include_backport = bool(commit.upstream_commit)
+
         system_prompt = self.prompts.build_system_prompt(
             include_technical_patterns=True,
             include_false_positive_guide=False,
+            include_backport_guide=include_backport,
             subsystem_guides=subsystems
         )
 
@@ -513,9 +518,13 @@ If no issues found, return: []
             return []
 
         # Load false positive prevention guide
+        # Include backport guide if this is a backport
+        include_backport = bool(commit.upstream_commit)
+
         system_prompt = self.prompts.build_system_prompt(
             include_technical_patterns=True,
             include_false_positive_guide=True,
+            include_backport_guide=include_backport,
             subsystem_guides=[]
         )
 

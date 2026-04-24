@@ -38,6 +38,7 @@ setup(
             'prompts/review-core.md',
             'prompts/technical-patterns.md',
             'prompts/false-positive-guide.md',
+            'prompts/backport-verification.md',
             'prompts/callstack.md',
             'prompts/inline-template.md',
             'prompts/README.md',
