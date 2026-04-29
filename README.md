@@ -117,6 +117,44 @@ python kernel_review_agent.py HEAD abc123 def456
 python kernel_review_agent.py HEAD~5..HEAD~3 HEAD~1..HEAD
 ```
 
+### List Mode
+
+Review commits from a file instead of command-line arguments:
+
+```bash
+# Generate commit list from git log
+git log --pretty=oneline HEAD~100..HEAD > commits.txt
+
+# Review commits from list
+python kernel_review_agent.py --list commits.txt --output-dir ./reviews/
+
+# Combine list with command-line commits
+python kernel_review_agent.py abc123 --list commits.txt
+```
+
+**List file format:**
+- One commit per line
+- First column: commit SHA (full or short)
+- Remaining columns: ignored (e.g., commit subject from `git log --pretty=oneline`)
+- Lines starting with `#`: comments (ignored)
+- Empty lines: ignored
+
+**Example list file:**
+```
+# Important security fixes
+abc123def456789abcdef012345678901234567 Fix CVE-2024-1234 in network stack
+def456789abc123def456789abc123def456789 Fix memory leak in driver
+
+# Performance improvements  
+789abc123def456789abc123def456789abc123 Optimize buffer allocation
+```
+
+**Use cases:**
+- Process large numbers of commits efficiently
+- Share commit lists between team members
+- Automate reviews with generated lists
+- Resume failed batches by removing processed commits from list
+
 ### Patch Mode
 
 Review patch files instead of commits:
@@ -552,6 +590,10 @@ python kernel_review_agent.py HEAD abc123 def456 --output-dir ./reviews/
 # Review multiple ranges
 python kernel_review_agent.py HEAD~5..HEAD~3 HEAD~1..HEAD --output-dir ./reviews/
 
+# Review commits from a file
+git log --pretty=oneline HEAD~50..HEAD > commits.txt
+python kernel_review_agent.py --list commits.txt --output-dir ./reviews/
+
 # Count issues found
 grep -c "issues-found" ./reviews/*/*.json
 ```
@@ -573,6 +615,33 @@ python kernel_review_agent.py "$BASE..$BRANCH" \
 # Check for high-severity issues
 jq -r 'select(."issue-severity-score" == "high") | .sha' \
     "./reviews/$BRANCH"/*.json
+```
+
+**Using --list for large batches:**
+
+```bash
+#!/bin/bash
+# review-batch.sh - Review large batches with resumability
+
+BRANCH="downstream-6.8"
+BASE="upstream"
+REVIEWS_DIR="./reviews/$BRANCH"
+
+# Generate commit list
+git log --pretty=oneline "$BASE..$BRANCH" > commits.txt
+
+# Review with --force to allow re-processing
+python kernel_review_agent.py --list commits.txt \
+    --host localhost \
+    --port 11434 \
+    --output-dir "$REVIEWS_DIR" \
+    --force
+
+# Generate report
+echo "Review complete. Summary:"
+echo "Total commits: $(wc -l < commits.txt)"
+echo "High-severity: $(jq -r 'select(."issue-severity-score" == "high") | .sha' "$REVIEWS_DIR"/*/*.json | wc -l)"
+echo "Medium-severity: $(jq -r 'select(."issue-severity-score" == "medium") | .sha' "$REVIEWS_DIR"/*/*.json | wc -l)"
 ```
 
 ## Configuration
