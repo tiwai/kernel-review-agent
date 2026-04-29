@@ -539,6 +539,7 @@ Examples:
     successful = 0
     failed = 0
     skipped = 0
+    failed_items = []  # Track failed commits/patches for summary
 
     # Patch mode: process patch files
     if args.patch:
@@ -548,6 +549,7 @@ Examples:
                 if not os.path.exists(patch_file):
                     print(f"Error: Patch file not found: {patch_file}", file=sys.stderr)
                     failed += 1
+                    failed_items.append(patch_file)
                     continue
 
                 if args.verbose:
@@ -616,6 +618,7 @@ Examples:
                     import traceback
                     traceback.print_exc()
                 failed += 1
+                failed_items.append(patch_file)
                 continue
 
     # Commit mode: process commits
@@ -741,6 +744,7 @@ Examples:
                     traceback.print_exc()
 
                 failed += 1
+                failed_items.append(commit_ref)
 
                 # Continue with next commit
                 if total_items > 1:
@@ -754,6 +758,7 @@ Examples:
                     traceback.print_exc()
 
                 failed += 1
+                failed_items.append(commit_ref)
 
                 # Continue with next commit
                 if total_items > 1:
@@ -771,6 +776,21 @@ Examples:
         if skipped > 0:
             print(f"  ⊘ {skipped} skipped")
         print("=" * 70)
+
+        # Show failed items for easy re-run
+        if failed_items:
+            print()
+            print(f"Failed {item_type}:")
+            for item in failed_items:
+                print(f"  {item}")
+            print()
+            if args.patch:
+                print(f"To retry failed patches:")
+                print(f"  {' '.join(['kernel_review_agent.py', '--patch'] + failed_items)}")
+            else:
+                print(f"To retry failed commits:")
+                print(f"  {' '.join(['kernel_review_agent.py'] + failed_items)}")
+            print("=" * 70)
 
     # Return error code if all items failed
     if successful == 0 and (failed > 0 or skipped == total_items):
