@@ -67,6 +67,12 @@ Examples:
   # Review multiple ranges
   %(prog)s HEAD~5..HEAD~3 HEAD~1..HEAD --output-dir ./reviews/
 
+  # Review commits from a list file
+  %(prog)s --list commits.txt --output-dir ./reviews/
+
+  # Generate list with: git log --pretty=oneline > commits.txt
+  # List format: one commit per line, first column is commit ID
+
   # Review patch file
   %(prog)s --patch my-changes.patch --output-dir ./reviews/
 
@@ -77,7 +83,7 @@ Examples:
 
     parser.add_argument(
         "commit",
-        nargs='+',
+        nargs='*',
         help="Commit SHA(s), range(s), or patch file(s) (e.g., abc123, HEAD~5..HEAD, or with --patch: file.patch)"
     )
 
@@ -85,6 +91,12 @@ Examples:
         "--patch",
         action="store_true",
         help="Treat arguments as patch files instead of commit references"
+    )
+
+    parser.add_argument(
+        "--list",
+        metavar="FILE",
+        help="Read commit IDs from file (one per line, first column only, like 'git log --pretty=oneline')"
     )
 
     parser.add_argument(
@@ -222,6 +234,50 @@ Examples:
     # Handle --disable-tools flag (overrides default)
     if args.disable_tools:
         args.enable_tools = False
+
+    # Handle --list flag: read commit IDs from file
+    if args.list:
+        if not os.path.exists(args.list):
+            print(f"Error: List file not found: {args.list}", file=sys.stderr)
+            return 1
+
+        try:
+            with open(args.list, 'r') as f:
+                # Read commit IDs from first column (space/tab separated)
+                commits_from_file = []
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        # Skip empty lines and comments
+                        continue
+
+                    # Extract first column (commit ID)
+                    parts = line.split(None, 1)  # Split on whitespace, max 1 split
+                    if parts:
+                        commit_id = parts[0]
+                        commits_from_file.append(commit_id)
+
+                if not commits_from_file:
+                    print(f"Error: No commit IDs found in {args.list}", file=sys.stderr)
+                    return 1
+
+                # Add to args.commit (combine with command-line commits if any)
+                if args.commit:
+                    args.commit.extend(commits_from_file)
+                else:
+                    args.commit = commits_from_file
+
+                if args.verbose:
+                    print(f"Loaded {len(commits_from_file)} commit(s) from {args.list}")
+
+        except IOError as e:
+            print(f"Error: Failed to read list file {args.list}: {e}", file=sys.stderr)
+            return 1
+
+    # Check if we have commits to process
+    if not args.commit:
+        print("Error: No commits specified. Provide commit SHA(s), ranges, or use --list FILE", file=sys.stderr)
+        return 1
 
     # Check if in git repository (temporary extractor for check)
     temp_git = CommitExtractor(verbose=args.verbose)
