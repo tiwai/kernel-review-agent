@@ -401,6 +401,18 @@ python kernel_review_agent.py HEAD --max-tokens 32000
 
 When `--max-tokens` is specified, all tasks use the same limit.
 
+```bash
+# Override LLM request timeout
+python kernel_review_agent.py HEAD --timeout 600
+
+# Disable timeout completely (useful for very slow models or complex commits)
+python kernel_review_agent.py HEAD --timeout 0
+```
+
+**Default timeout:** 300 seconds (5 minutes)
+
+When `--timeout 0` is specified, timeout checks are completely disabled, allowing the LLM to take as long as needed to respond.
+
 ### Debug Options
 
 ```bash

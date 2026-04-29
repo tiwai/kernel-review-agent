@@ -165,6 +165,12 @@ Examples:
     )
 
     parser.add_argument(
+        "--timeout",
+        type=int,
+        help="LLM request timeout in seconds (0 = no timeout, default: 300)"
+    )
+
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose output"
@@ -310,6 +316,18 @@ Examples:
 
         if args.debug:
             print(f"[DEBUG] Token limits overridden to: {args.max_tokens}")
+            print()
+
+    # Override timeout if --timeout specified
+    if args.timeout is not None:
+        if args.timeout == 0:
+            config.LLM_TIMEOUT = None  # Disable timeout
+        else:
+            config.LLM_TIMEOUT = args.timeout
+
+        if args.debug:
+            timeout_str = "disabled" if config.LLM_TIMEOUT is None else f"{config.LLM_TIMEOUT}s"
+            print(f"[DEBUG] LLM timeout: {timeout_str}")
             print()
 
     # Set Google credentials if specified
