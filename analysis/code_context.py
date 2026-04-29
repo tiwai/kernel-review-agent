@@ -56,8 +56,10 @@ class CodeContextLoader:
                 print(f"[DEBUG] Loading context for {func_name} in {file_path}")
 
             # Load full function definition (current and parent)
-            current_def = self._load_function_definition(file_path, func_name, self.commit.sha)
-            parent_def = self._load_function_definition(file_path, func_name, f"{self.commit.sha}^")
+            # In patch mode, commit.sha is a filename, not a git ref, so use HEAD
+            commit_ref = self._get_commit_ref()
+            current_def = self._load_function_definition(file_path, func_name, commit_ref)
+            parent_def = self._load_function_definition(file_path, func_name, f"{commit_ref}^")
 
             if current_def or parent_def:
                 context["function_definitions"][func_name] = {
@@ -86,8 +88,10 @@ class CodeContextLoader:
                 print(f"[DEBUG] Loading timer callback: {callback_name} in {file_path}")
 
             # Load callback function definition
-            current_def = self._load_function_definition(file_path, callback_name, self.commit.sha)
-            parent_def = self._load_function_definition(file_path, callback_name, f"{self.commit.sha}^")
+            # In patch mode, commit.sha is a filename, not a git ref, so use HEAD
+            commit_ref = self._get_commit_ref()
+            current_def = self._load_function_definition(file_path, callback_name, commit_ref)
+            parent_def = self._load_function_definition(file_path, callback_name, f"{commit_ref}^")
 
             if current_def or parent_def:
                 # Mark as timer callback for special attention
@@ -100,14 +104,35 @@ class CodeContextLoader:
                 }
 
         # Load related headers
+        commit_ref = self._get_commit_ref()
         for file_path in self.commit.files:
             if file_path.endswith('.h'):
-                header_content = self._load_file(file_path, self.commit.sha)
+                header_content = self._load_file(file_path, commit_ref)
                 if header_content:
                     context["headers"][file_path] = header_content
 
         context["changed_functions"] = changed_functions
         return context
+
+    def _get_commit_ref(self) -> str:
+        """
+        Get a valid git reference for the commit.
+
+        In patch mode, commit.sha is a filename (e.g., "test.patch"), not a git ref.
+        Detect this and return "HEAD" instead.
+
+        Returns:
+            Git reference (commit SHA or "HEAD" for patches)
+        """
+        # Git SHAs are hex strings (0-9, a-f). If commit.sha contains other chars
+        # (like dots, slashes, or non-hex chars), it's likely a patch filename.
+        import re
+        if re.match(r'^[0-9a-fA-F]+$', self.commit.sha):
+            # Valid hex SHA
+            return self.commit.sha
+        else:
+            # Patch mode - use HEAD
+            return "HEAD"
 
     def _extract_changed_functions_from_diff(self) -> List[Dict]:
         """
@@ -122,7 +147,8 @@ class CodeContextLoader:
         for line in self.commit.diff.split('\n'):
             # Track current file
             if line.startswith('diff --git'):
-                match = re.search(r'b/(.+)$', line)
+                # Match " b/" (with space) to avoid matching b/ in paths like "usb/qcom"
+                match = re.search(r' b/(.+)$', line)
                 if match:
                     current_file = match.group(1)
 
@@ -187,7 +213,8 @@ class CodeContextLoader:
         for line in self.commit.diff.split('\n'):
             # Track current file
             if line.startswith('diff --git'):
-                match = re.search(r'b/(.+)$', line)
+                # Match " b/" (with space) to avoid matching b/ in paths like "usb/qcom"
+                match = re.search(r' b/(.+)$', line)
                 if match:
                     current_file = match.group(1)
 
