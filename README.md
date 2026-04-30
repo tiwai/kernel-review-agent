@@ -267,7 +267,12 @@ python kernel_review_agent.py HEAD --output-dir ./reviews/
 
 # Enable verbose output
 python kernel_review_agent.py HEAD --verbose
+
+# Write progress output to a log file instead of stdout
+python kernel_review_agent.py HEAD~10..HEAD --log-file review.log
 ```
+
+`--log-file` redirects all progress and summary output to the specified file. Error messages continue to go to stderr so they remain visible in the terminal. Useful for batch runs where you want to capture output without redirecting the shell.
 
 ### SUSE Kernel Integration
 

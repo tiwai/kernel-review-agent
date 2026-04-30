@@ -250,7 +250,21 @@ Examples:
         help="Disable tool calling and use standard pre-loaded context only"
     )
 
+    parser.add_argument(
+        "--log-file",
+        metavar="FILE",
+        help="Write output to FILE instead of stdout"
+    )
+
     args = parser.parse_args()
+
+    # Redirect stdout to log file if requested
+    if args.log_file:
+        try:
+            sys.stdout = open(args.log_file, 'w', buffering=1)
+        except OSError as e:
+            print(f"Error: Cannot open log file {args.log_file}: {e}", file=sys.stderr)
+            return 1
 
     # Handle --disable-tools flag (overrides default)
     if args.disable_tools:
