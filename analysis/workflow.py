@@ -319,6 +319,36 @@ class ReviewWorkflow:
 
         return result
 
+    def _extract_json_array(self, response: str) -> Optional[str]:
+        """
+        Extract the JSON array from an LLM response that may contain prose.
+
+        Some models wrap their analysis in markdown (e.g. [# Heading ...]) before
+        appending the JSON array. The naive [.*] regex picks up the first [
+        which is prose, not JSON. This method scans for a [ that actually starts
+        a JSON array (followed by { for objects or ] for empty array).
+        """
+        # Try ```json code block first
+        code_match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', response, re.DOTALL)
+        if code_match:
+            return code_match.group(1)
+
+        # Scan for [ that begins a JSON array, skipping prose-style [text] patterns
+        pos = 0
+        while pos < len(response):
+            bracket_pos = response.find('[', pos)
+            if bracket_pos == -1:
+                break
+            rest = response[bracket_pos + 1:].lstrip()
+            if rest.startswith('{') or rest.startswith(']'):
+                # Found a [ followed by { (array of objects) or ] (empty array)
+                sub_match = re.search(r'\[.*\]', response[bracket_pos:], re.DOTALL)
+                if sub_match:
+                    return sub_match.group(0)
+            pos = bracket_pos + 1
+
+        return None
+
     def _categorize_changes(self, commit: Commit, context: Dict) -> List[Dict]:
         """
         Task 1: Categorize changes using LLM.
@@ -356,9 +386,8 @@ Return ONLY a JSON array of changes, no other text:
         # Parse JSON response
         try:
             # Extract JSON from response (may have markdown code blocks)
-            json_match = re.search(r'\[.*\]', response, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(0)
+            json_str = self._extract_json_array(response)
+            if json_str is not None:
                 # Sanitize JSON to handle literal control characters from LLM
                 json_str = self._sanitize_json_string(json_str)
                 categories = json.loads(json_str)
@@ -462,9 +491,8 @@ If no issues found, return: []
 
         # Parse JSON response
         try:
-            json_match = re.search(r'\[.*\]', response, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(0)
+            json_str = self._extract_json_array(response)
+            if json_str is not None:
 
                 # Sanitize JSON: LLMs sometimes output literal control characters
                 # in strings which are invalid in JSON. We need to escape them.
@@ -574,9 +602,8 @@ Return ONLY verified findings as JSON array (discard false positives):
 
         # Parse JSON response
         try:
-            json_match = re.search(r'\[.*\]', response, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(0)
+            json_str = self._extract_json_array(response)
+            if json_str is not None:
                 # Sanitize JSON to handle literal control characters from LLM
                 json_str = self._sanitize_json_string(json_str)
                 verified = json.loads(json_str)
