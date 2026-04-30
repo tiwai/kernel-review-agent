@@ -414,6 +414,15 @@ python kernel_review_agent.py HEAD --timeout 0
 When `--timeout 0` is specified, timeout checks are completely disabled, allowing the LLM to take as long as needed to respond.
 
 ```bash
+# Set reasoning effort for models that support it (e.g. gpt-oss)
+python kernel_review_agent.py HEAD --reasoning-effort high
+python kernel_review_agent.py HEAD --reasoning-effort medium
+python kernel_review_agent.py HEAD --reasoning-effort low
+```
+
+Some models (e.g. gpt-oss) accept a `reasoning_effort` parameter controlling how much thinking the model applies before responding. Higher effort produces more thorough analysis at the cost of slower responses. Models that don't support this parameter silently ignore it.
+
+```bash
 # Re-run review if no issues found and it completed within 60 seconds
 python kernel_review_agent.py HEAD --reevaluate-threshold 60
 ```
