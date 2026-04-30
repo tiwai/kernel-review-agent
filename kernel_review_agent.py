@@ -179,6 +179,13 @@ Examples:
     )
 
     parser.add_argument(
+        "--reasoning-effort",
+        choices=["low", "medium", "high"],
+        default=None,
+        help="Reasoning effort for models that support it, e.g. gpt-oss (low/medium/high)"
+    )
+
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose output"
@@ -366,11 +373,15 @@ Examples:
                 'port': args.port,
                 'api_key': args.api_key,
             })
+            if args.reasoning_effort:
+                provider_kwargs['reasoning_effort'] = args.reasoning_effort
         elif provider == 'ollama':
             provider_kwargs.update({
                 'host': args.host,
                 'port': args.port,
             })
+            if args.reasoning_effort:
+                provider_kwargs['reasoning_effort'] = args.reasoning_effort
         elif provider == 'anthropic':
             if args.anthropic_api_key:
                 provider_kwargs['api_key'] = args.anthropic_api_key
@@ -503,7 +514,8 @@ Examples:
                 verbose=args.verbose,
                 debug=args.debug,
                 dump_prompts=args.dump_prompts,
-                dump_dir=args.dump_dir
+                dump_dir=args.dump_dir,
+                reasoning_effort=args.reasoning_effort or None
             )
 
             workflow = HybridReviewWorkflow(

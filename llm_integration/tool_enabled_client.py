@@ -195,6 +195,8 @@ class ToolEnabledClient(OpenAIClient):
             }
             if temperature is not None:
                 api_kwargs["temperature"] = temperature
+            if self.reasoning_effort is not None:
+                api_kwargs["reasoning_effort"] = self.reasoning_effort
 
             # Call LLM
             response = self.client.chat.completions.create(**api_kwargs)

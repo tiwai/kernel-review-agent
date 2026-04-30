@@ -24,6 +24,7 @@ class OpenAIClient(LLMClient):
         debug: bool = False,
         dump_prompts: bool = False,
         dump_dir: str = config.DEBUG_DUMP_DIR,
+        reasoning_effort: Optional[str] = None,
         **kwargs
     ):
         """
@@ -43,6 +44,7 @@ class OpenAIClient(LLMClient):
 
         self.base_url = f"http://{host}:{port}/v1"
         self.api_key = api_key
+        self.reasoning_effort = reasoning_effort
 
         # Create dump directory if needed
         if self.dump_prompts and not os.path.exists(self.dump_dir):
@@ -154,6 +156,8 @@ class OpenAIClient(LLMClient):
                 }
                 if temperature is not None:
                     api_kwargs["temperature"] = temperature
+                if self.reasoning_effort is not None:
+                    api_kwargs["reasoning_effort"] = self.reasoning_effort
 
                 response = self.client.chat.completions.create(**api_kwargs)
 
