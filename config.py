@@ -110,6 +110,9 @@ def load_configuration():
         'LLM_TIMEOUT': 300,
         'CONNECT_TIMEOUT': 10,
 
+        # Re-evaluation: re-run if no issues found within this many seconds (0 = disabled)
+        'REEVALUATION_TIME_THRESHOLD': 0,
+
         # Output defaults
         'DEFAULT_OUTPUT_DIR': '.',
 
@@ -171,3 +174,4 @@ DEFAULT_OUTPUT_DIR = _config['DEFAULT_OUTPUT_DIR']
 DEBUG_DUMP_DIR = _config['DEBUG_DUMP_DIR']
 SUSE_KERNEL_SOURCE_REPO = _config['SUSE_KERNEL_SOURCE_REPO']
 UPSTREAM_LINUX_REPO = _config['UPSTREAM_LINUX_REPO']
+REEVALUATION_TIME_THRESHOLD = _config['REEVALUATION_TIME_THRESHOLD']

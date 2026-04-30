@@ -413,6 +413,25 @@ python kernel_review_agent.py HEAD --timeout 0
 
 When `--timeout 0` is specified, timeout checks are completely disabled, allowing the LLM to take as long as needed to respond.
 
+```bash
+# Re-run review if no issues found and it completed within 60 seconds
+python kernel_review_agent.py HEAD --reevaluate-threshold 60
+```
+
+Low-parameter models can be inconsistent — a fast review that reports no issues may have missed something. With `--reevaluate-threshold N`, if the review completes in under N seconds with zero findings, the agent runs the review a second time. If the second run finds issues, those results are used instead; otherwise the original (no-issue) result is kept.
+
+**Default:** disabled (threshold = 0)
+
+This is most useful when:
+- Using small/fast models (e.g., 7B–20B parameter models)
+- Reviews complete suspiciously quickly (under a minute)
+- You want a second opinion before concluding a commit is clean
+
+Can also be set persistently in the config file:
+```json
+{ "REEVALUATION_TIME_THRESHOLD": 60 }
+```
+
 ### Debug Options
 
 ```bash
@@ -716,6 +735,7 @@ All options are optional. See `config.json.example` for a complete template.
 **Timeouts:**
 - `LLM_TIMEOUT`: Request timeout in seconds (default: `300`)
 - `CONNECT_TIMEOUT`: Connection timeout in seconds (default: `10`)
+- `REEVALUATION_TIME_THRESHOLD`: Re-run review if no issues found within this many seconds; `0` disables (default: `0`)
 
 **Other:**
 - `MAX_RETRIES`: Number of retries (default: `1`)

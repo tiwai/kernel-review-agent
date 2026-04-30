@@ -171,6 +171,14 @@ Examples:
     )
 
     parser.add_argument(
+        "--reevaluate-threshold",
+        type=int,
+        default=config.REEVALUATION_TIME_THRESHOLD,
+        metavar="SECONDS",
+        help="Re-run review if no issues found within this many seconds (0 = disabled, default: disabled)"
+    )
+
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose output"
@@ -583,6 +591,21 @@ Examples:
                 if args.debug:
                     print(f"[DEBUG] Review completed in {elapsed_time:.2f} seconds")
 
+                # Re-evaluate if no issues found and review completed suspiciously fast
+                if args.reevaluate_threshold > 0 and len(result.findings) == 0 and elapsed_time < args.reevaluate_threshold:
+                    if args.verbose:
+                        print(f"  No issues found in {elapsed_time:.1f}s — re-evaluating...")
+                    reeval_start = time.time()
+                    result2 = workflow.execute_review(commit)
+                    reeval_elapsed = time.time() - reeval_start
+                    if len(result2.findings) > 0:
+                        if args.verbose:
+                            print(f"  Re-evaluation found {len(result2.findings)} issue(s) — using re-evaluation result")
+                        result = result2
+                        elapsed_time = reeval_elapsed
+                    elif args.verbose:
+                        print(f"  Re-evaluation confirmed: no issues found")
+
                 # Create output directory if needed
                 if args.output_dir != "." and not os.path.exists(args.output_dir):
                     os.makedirs(args.output_dir)
@@ -675,6 +698,21 @@ Examples:
 
                 if args.debug:
                     print(f"[DEBUG] Review completed in {elapsed_time:.2f} seconds")
+
+                # Re-evaluate if no issues found and review completed suspiciously fast
+                if args.reevaluate_threshold > 0 and len(result.findings) == 0 and elapsed_time < args.reevaluate_threshold:
+                    if args.verbose:
+                        print(f"  No issues found in {elapsed_time:.1f}s — re-evaluating...")
+                    reeval_start = time.time()
+                    result2 = workflow.execute_review(commit)
+                    reeval_elapsed = time.time() - reeval_start
+                    if len(result2.findings) > 0:
+                        if args.verbose:
+                            print(f"  Re-evaluation found {len(result2.findings)} issue(s) — using re-evaluation result")
+                        result = result2
+                        elapsed_time = reeval_elapsed
+                    elif args.verbose:
+                        print(f"  Re-evaluation confirmed: no issues found")
 
                 # Create output directory after successful review
                 os.makedirs(commit_dir, exist_ok=True)
