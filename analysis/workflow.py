@@ -743,15 +743,12 @@ JSON array:"""
         """
         Task 5 (optional): Propose fix patches for verified findings.
 
+        When the LLM client supports tool calling, the model can read actual
+        source files via git_show/git_grep to produce more accurate patches.
+
         Returns:
             Unified diff text with proposed fixes, or empty string on failure.
         """
-        system_prompt = (
-            "You are a Linux kernel patch developer. "
-            "Generate minimal, correct unified diff patches to fix the identified issues. "
-            "Output only the patch hunks — no prose, no explanation."
-        )
-
         findings_text = json.dumps(findings, indent=2)
         categories_text = json.dumps(categories, indent=2)
 
@@ -767,6 +764,31 @@ JSON array:"""
                 + "\n"
             )
 
+        # Check if the LLM client supports tool calling
+        has_tools = hasattr(self.llm, 'analyze_with_tools')
+
+        if has_tools:
+            system_prompt = (
+                "You are a Linux kernel patch developer. "
+                "You have access to git tools (git_show, git_grep) to read the actual source files. "
+                "Use them to verify the exact current state of the code before writing patches. "
+                "Output only the patch hunks — no prose, no explanation."
+            )
+            tool_instruction = (
+                f"\nBefore writing each patch:\n"
+                f"1. Use git_show with commit='{commit.sha}' and the relevant file path to read the "
+                f"current source around the issue location\n"
+                f"2. Verify the exact line numbers and surrounding context\n"
+                f"3. Then write the patch with correct line numbers\n"
+            )
+        else:
+            system_prompt = (
+                "You are a Linux kernel patch developer. "
+                "Generate minimal, correct unified diff patches to fix the identified issues. "
+                "Output only the patch hunks — no prose, no explanation."
+            )
+            tool_instruction = ""
+
         user_prompt = f"""IMPORTANT: Output unified diff patch hunks only. No prose before or after the patches.
 
 {commit_context}
@@ -779,7 +801,7 @@ Change categories:
 
 Verified issues to fix:
 {findings_text}
-
+{tool_instruction}
 Generate a unified diff patch for each issue using standard format:
   # Finding: <finding category and type>
   --- a/path/to/file.c
@@ -799,10 +821,18 @@ Rules:
 Patches:"""
 
         try:
-            response = self.llm.analyze_code(
-                system_prompt, user_prompt,
-                max_tokens=config.ANALYZE_MAX_TOKENS
-            )
+            if has_tools:
+                response = self.llm.analyze_with_tools(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    max_iterations=8,
+                    max_tokens=config.ANALYZE_MAX_TOKENS
+                )
+            else:
+                response = self.llm.analyze_code(
+                    system_prompt, user_prompt,
+                    max_tokens=config.ANALYZE_MAX_TOKENS
+                )
             return response.strip()
         except Exception as e:
             if self.verbose or self.debug:
