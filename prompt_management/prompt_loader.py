@@ -162,4 +162,15 @@ Focus exclusively on finding potential regressions in the code changes.
             if subsystem_content:
                 parts.append("\n# SUBSYSTEM-SPECIFIC PATTERNS\n\n" + subsystem_content)
 
+        # Override the OUTPUT FORMAT from review-core.md for API use.
+        # The user prompt specifies the exact JSON format required for each task.
+        parts.append("""
+# OUTPUT FORMAT OVERRIDE
+
+CRITICAL: This agent operates via API, not as an interactive session.
+Ignore the OUTPUT FORMAT section above. Do NOT output FINAL REGRESSIONS FOUND,
+FINAL TOKENS USED, Assisted-by, or any prose summary.
+Your response must be ONLY the JSON array requested in the user prompt.
+""")
+
         return "\n\n".join(parts)

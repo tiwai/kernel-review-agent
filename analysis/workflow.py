@@ -319,6 +319,33 @@ class ReviewWorkflow:
 
         return result
 
+    def _reformat_as_json(self, prose_response: str, schema_example: str, max_tokens: int = 4096) -> Optional[str]:
+        """
+        Fallback: ask the model to reformat a prose response as a JSON array.
+        Used when the primary call returns prose instead of JSON.
+        Uses a minimal system prompt to avoid the conflicting OUTPUT FORMAT instructions.
+        """
+        if self.verbose or self.debug:
+            print("[WARNING] Retrying with JSON reformatter...", file=sys.stderr)
+
+        system_prompt = (
+            "You are a JSON formatter. "
+            "Convert the provided analysis to a JSON array. "
+            "Return ONLY valid JSON — no prose, no markdown, no explanation."
+        )
+        user_prompt = (
+            f"Convert this analysis to a JSON array.\n"
+            f"Format: {schema_example}\n"
+            f"If the analysis concludes there are no issues or all are false positives, return: []\n\n"
+            f"Analysis:\n{prose_response}\n\n"
+            f"JSON array:"
+        )
+        try:
+            response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=max_tokens)
+            return self._extract_json_array(response)
+        except Exception:
+            return None
+
     def _extract_json_array(self, response: str) -> Optional[str]:
         """
         Extract the JSON array from an LLM response that may contain prose.
@@ -400,6 +427,14 @@ JSON array:"""
                 if self.verbose or self.debug:
                     print("[WARNING] No JSON array found in categorization response", file=sys.stderr)
                     print(f"[WARNING] Response preview: {response[:200]}...", file=sys.stderr)
+                schema = '[{{"id": "CHANGE-1", "type": "...", "description": "...", "location": "..."}}]'
+                json_str = self._reformat_as_json(response, schema, max_tokens=config.CATEGORIZE_MAX_TOKENS)
+                if json_str is not None:
+                    try:
+                        categories = json.loads(self._sanitize_json_string(json_str))
+                        return categories if isinstance(categories, list) else []
+                    except json.JSONDecodeError:
+                        pass
         except json.JSONDecodeError as e:
             if self.verbose or self.debug:
                 print(f"[ERROR] Failed to parse categorization JSON: {e}", file=sys.stderr)
@@ -511,6 +546,14 @@ JSON array:"""
                 if self.verbose or self.debug:
                     print("[WARNING] No JSON array found in regression analysis response", file=sys.stderr)
                     print(f"[WARNING] Response preview: {response[:200]}...", file=sys.stderr)
+                schema = '[{{"category": "CHANGE-1", "type": "...", "message": "...", "evidence": "...", "severity": "..."}}]'
+                json_str = self._reformat_as_json(response, schema, max_tokens=config.ANALYZE_MAX_TOKENS)
+                if json_str is not None:
+                    try:
+                        findings = json.loads(self._sanitize_json_string(json_str))
+                        return findings if isinstance(findings, list) else []
+                    except json.JSONDecodeError:
+                        pass
         except json.JSONDecodeError as e:
             if self.verbose or self.debug:
                 print(f"[ERROR] Failed to parse regression analysis JSON: {e}", file=sys.stderr)
@@ -622,6 +665,15 @@ JSON array:"""
                 if self.verbose or self.debug:
                     print("[WARNING] No JSON array found in verification response", file=sys.stderr)
                     print(f"[WARNING] Response preview: {response[:200]}...", file=sys.stderr)
+                schema = '[{{"category": "...", "type": "...", "message": "...", "evidence": "...", "severity": "..."}}]'
+                json_str = self._reformat_as_json(response, schema, max_tokens=config.VERIFY_MAX_TOKENS)
+                if json_str is not None:
+                    try:
+                        verified = json.loads(self._sanitize_json_string(json_str))
+                        return verified if isinstance(verified, list) else []
+                    except json.JSONDecodeError:
+                        pass
+                if self.verbose or self.debug:
                     print("[WARNING] Keeping original findings", file=sys.stderr)
                 return findings
         except json.JSONDecodeError as e:
