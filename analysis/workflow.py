@@ -21,6 +21,7 @@ class ReviewResult:
     subsystems_loaded: List[str]
     suse_verification: Optional[Dict] = None  # SUSE upstream verification result
     backport_comparison: Optional[Dict] = None  # Backport quality comparison
+    fix_patches: Optional[str] = None  # Proposed fix patches (unified diff)
 
 
 class ReviewWorkflow:
@@ -34,7 +35,8 @@ class ReviewWorkflow:
         verbose: bool = False,
         debug: bool = False,
         skip_verification: bool = False,
-        suse_verifier: Optional['SuseUpstreamVerifier'] = None
+        suse_verifier: Optional['SuseUpstreamVerifier'] = None,
+        propose_fixes: bool = False
     ):
         """
         Initialize review workflow.
@@ -47,6 +49,7 @@ class ReviewWorkflow:
             debug: Enable debug output
             skip_verification: Skip false-positive verification step
             suse_verifier: SUSE upstream verifier (optional)
+            propose_fixes: Generate fix patch proposals for verified findings
         """
         self.llm = llm_client
         self.prompts = prompt_loader
@@ -55,6 +58,7 @@ class ReviewWorkflow:
         self.debug = debug
         self.skip_verification = skip_verification
         self.suse_verifier = suse_verifier
+        self.propose_fixes = propose_fixes
 
     def execute_review(self, commit: Commit) -> ReviewResult:
         """
@@ -187,6 +191,15 @@ class ReviewWorkflow:
         if self.debug:
             print(f"[DEBUG] Summary: {summary}")
 
+        # Task 5 (optional): Propose fix patches
+        fix_patches = None
+        if self.propose_fixes and verified:
+            if self.verbose:
+                print("\n[+] Proposing fix patches...")
+            if self.debug:
+                print(f"[DEBUG] Task 5: Proposing fixes for {len(verified)} finding(s)")
+            fix_patches = self._propose_fixes(commit, verified, context, categories)
+
         if self.verbose:
             print(f"\nReview complete: {len(verified)} issue(s) found\n")
 
@@ -194,7 +207,8 @@ class ReviewWorkflow:
             findings=verified,
             summary=summary,
             subsystems_loaded=subsystems,
-            suse_verification=suse_verification_result
+            suse_verification=suse_verification_result,
+            fix_patches=fix_patches
         )
 
     def _gather_context(self, commit: Commit) -> Dict:
@@ -695,6 +709,82 @@ JSON array:"""
             return findings
 
         return []
+
+    def _propose_fixes(
+        self,
+        commit: Commit,
+        findings: List[Dict],
+        context: Dict,
+        categories: List[Dict]
+    ) -> str:
+        """
+        Task 5 (optional): Propose fix patches for verified findings.
+
+        Returns:
+            Unified diff text with proposed fixes, or empty string on failure.
+        """
+        system_prompt = (
+            "You are a Linux kernel patch developer. "
+            "Generate minimal, correct unified diff patches to fix the identified issues. "
+            "Output only the patch hunks — no prose, no explanation."
+        )
+
+        findings_text = json.dumps(findings, indent=2)
+        categories_text = json.dumps(categories, indent=2)
+
+        commit_context = f"Subject: {commit.subject}"
+        if commit.message and commit.message.strip() and commit.message != commit.subject:
+            commit_context += f"\n\nCommit message:\n{commit.message}"
+
+        code_context_section = ""
+        if context.get("code_context_formatted"):
+            code_context_section = (
+                "FULL SOURCE CODE CONTEXT:\n"
+                + context["code_context_formatted"]
+                + "\n"
+            )
+
+        user_prompt = f"""IMPORTANT: Output unified diff patch hunks only. No prose before or after the patches.
+
+{commit_context}
+
+Change categories:
+{categories_text}
+
+{code_context_section}Original diff that introduced the issues:
+{commit.diff}
+
+Verified issues to fix:
+{findings_text}
+
+Generate a unified diff patch for each issue using standard format:
+  # Finding: <finding category and type>
+  --- a/path/to/file.c
+  +++ b/path/to/file.c
+  @@ -line,count +line,count @@ context_function
+   context line
+  -removed line
+  +added line
+   context line
+
+Rules:
+- One patch hunk per finding; label each with the finding ID (e.g. CHANGE-2 / memory-leak)
+- Use correct file paths (relative, as in the original diff)
+- Keep patches minimal — fix only the specific issue, do not refactor
+- If a fix is not possible to express as a diff (e.g. needs design change), write: # No patch: <reason>
+
+Patches:"""
+
+        try:
+            response = self.llm.analyze_code(
+                system_prompt, user_prompt,
+                max_tokens=config.ANALYZE_MAX_TOKENS
+            )
+            return response.strip()
+        except Exception as e:
+            if self.verbose or self.debug:
+                print(f"[WARNING] Failed to propose fixes: {e}", file=sys.stderr)
+            return ""
 
     def _generate_summary(
         self,

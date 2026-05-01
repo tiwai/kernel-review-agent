@@ -351,6 +351,21 @@ Hybrid mode:   "Timer callback signature mismatch CONFIRMED:
 - Only works with OpenAI-compatible providers (`--provider openai` or `--provider ollama`)
 - Other providers fall back to standard mode automatically
 
+### Fix Patch Proposals
+
+```bash
+# Ask the LLM to propose fix patches for each identified issue
+python kernel_review_agent.py HEAD --propose-fixes
+```
+
+When `--propose-fixes` is set and the review finds verified issues, the agent makes an additional LLM call to generate unified diff patches addressing each finding. The patches are written to `review-fix-patches.diff` in the same output directory as the other review files.
+
+**Important caveats:**
+- Patches are LLM-generated and **must be reviewed by a human** before applying
+- Line numbers may be approximate; always verify with `git apply --check` before use
+- Some issues (design problems, ABI changes) cannot be expressed as a simple diff; those are noted with `# No patch: <reason>`
+- This adds one extra LLM call per commit with findings, increasing review time
+
 ### Performance Options
 
 ```bash

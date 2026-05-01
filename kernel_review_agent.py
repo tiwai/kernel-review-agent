@@ -216,6 +216,12 @@ Examples:
     )
 
     parser.add_argument(
+        "--propose-fixes",
+        action="store_true",
+        help="Ask the LLM to propose fix patches for each identified issue (written to review-fix-patches.diff)"
+    )
+
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Force re-review even if output directory already exists for the commit"
@@ -543,7 +549,8 @@ Examples:
                 skip_verification=args.skip_verification,
                 suse_verifier=suse_verifier,
                 enable_tools=True,
-                upstream_repo=upstream_repo_extractor
+                upstream_repo=upstream_repo_extractor,
+                propose_fixes=args.propose_fixes
             )
 
     if not args.enable_tools:
@@ -560,7 +567,8 @@ Examples:
             verbose=args.verbose,
             debug=args.debug,
             skip_verification=args.skip_verification,
-            suse_verifier=suse_verifier
+            suse_verifier=suse_verifier,
+            propose_fixes=args.propose_fixes
         )
     formatter = ReportFormatter()
     metadata_gen = MetadataGenerator()
@@ -670,6 +678,14 @@ Examples:
                     f.write(report_text)
 
                 metadata_gen.save_json(metadata, metadata_path)
+
+                # Write fix patches if proposed
+                if result.fix_patches:
+                    fix_path = os.path.join(args.output_dir, "review-fix-patches.diff")
+                    with open(fix_path, 'w') as f:
+                        f.write(result.fix_patches)
+                    if args.verbose:
+                        print(f"  Fix patches: {fix_path}")
 
                 # Print summary
                 print(f"✓ Patch {patch_file}: {commit.subject}")
@@ -798,6 +814,14 @@ Examples:
                     f.write(report_text)
 
                 metadata_gen.save_json(metadata, metadata_path)
+
+                # Write fix patches if proposed
+                if result.fix_patches:
+                    fix_path = os.path.join(commit_dir, "review-fix-patches.diff")
+                    with open(fix_path, 'w') as f:
+                        f.write(result.fix_patches)
+                    if args.verbose:
+                        print(f"  Fix patches: {fix_path}")
 
                 # Print summary
                 print(f"✓ Commit {sha_short}: {commit.subject}")
