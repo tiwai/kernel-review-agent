@@ -364,7 +364,9 @@ class ReviewWorkflow:
         if commit.message and commit.message.strip() and commit.message != commit.subject:
             commit_context += f"\n\nCommit message:\n{commit.message}"
 
-        user_prompt = f"""Analyze this commit and categorize the changes.
+        user_prompt = f"""IMPORTANT: Your response must be a valid JSON array only. No prose, no explanation, no markdown. Start with [ and end with ].
+
+Analyze this commit and categorize the changes.
 
 For each distinct change, create a category with:
 - id: CHANGE-1, CHANGE-2, etc.
@@ -377,9 +379,11 @@ For each distinct change, create a category with:
 Diff:
 {commit.diff}
 
-Return ONLY a JSON array of changes, no other text:
-[{{"id": "CHANGE-1", "type": "...", "description": "...", "location": "..."}}]
-"""
+Return ONLY a JSON array of changes. No text before or after the JSON.
+Example format: [{{"id": "CHANGE-1", "type": "...", "description": "...", "location": "..."}}]
+If there are no distinct changes, return: []
+
+JSON array:"""
 
         response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=config.CATEGORIZE_MAX_TOKENS)
 
@@ -457,7 +461,9 @@ verify your findings.
 
 """
 
-        user_prompt = f"""Analyze this commit for potential regressions.
+        user_prompt = f"""IMPORTANT: Your response must be a valid JSON array only. No prose, no explanation, no markdown. Start with [ and end with ].
+
+Analyze this commit for potential regressions.
 
 {commit_context}
 
@@ -467,25 +473,25 @@ Categories of changes:
 {code_context_section}Full diff:
 {commit.diff}
 
-IMPORTANT: You have been provided with the full function definitions (both before and after
+You have been provided with the full function definitions (both before and after
 the changes) and their callers above. Use this complete context to:
 1. Verify how the changed functions are actually called
 2. Check what happens to return values
 3. Trace error handling paths in both current and parent versions
 4. Confirm your analysis against the actual source code, not just the diff
 
-For each potential issue found, return a JSON object with:
+For each potential issue found, include a JSON object with:
 - category: Which CHANGE-X this relates to
 - type: Type of issue (use-after-free, memory-leak, null-deref, race-condition, etc.)
 - message: Question or description of the issue (conversational, no ALL CAPS)
 - evidence: Code snippets or call traces supporting the finding
 - severity: low, medium, or high
 
-Return ONLY a JSON array of findings:
-[{{"category": "CHANGE-1", "type": "...", "message": "...", "evidence": "...", "severity": "..."}}]
-
+Return ONLY a JSON array of findings. No text before or after the JSON.
+Example format: [{{"category": "CHANGE-1", "type": "...", "message": "...", "evidence": "...", "severity": "..."}}]
 If no issues found, return: []
-"""
+
+JSON array:"""
 
         response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=config.ANALYZE_MAX_TOKENS)
 
@@ -575,13 +581,15 @@ each finding. Check the actual code, not just assumptions from the diff.
 
 """
 
-        user_prompt = f"""Verify these findings against the false-positive prevention guide.
+        user_prompt = f"""IMPORTANT: Your response must be a valid JSON array only. No prose, no explanation, no markdown. Start with [ and end with ].
+
+Verify these findings against the false-positive prevention guide.
 
 For each finding, check:
 1. Is there concrete evidence this can happen?
 2. Is this defensive programming vs. a real bug?
 3. Are all assumptions verified with code?
-4. IMPORTANT: Use the complete source code context provided below to verify
+4. Use the complete source code context provided below to verify:
    - Check how functions are actually called
    - Verify error handling in callers
    - Confirm the issue exists in the actual code, not just theory
@@ -594,9 +602,11 @@ For each finding, check:
 Findings to verify:
 {findings_text}
 
-Return ONLY verified findings as JSON array (discard false positives):
-[{{"category": "...", "type": "...", "message": "...", "evidence": "...", "severity": "..."}}]
-"""
+Return ONLY verified findings as a JSON array (discard false positives). No text before or after the JSON.
+Example format: [{{"category": "...", "type": "...", "message": "...", "evidence": "...", "severity": "..."}}]
+If all findings are false positives, return: []
+
+JSON array:"""
 
         response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=config.VERIFY_MAX_TOKENS)
 
