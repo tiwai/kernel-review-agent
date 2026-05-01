@@ -650,7 +650,8 @@ Examples:
                 # (do this AFTER review succeeds but BEFORE writing new files)
                 old_files = [
                     os.path.join(args.output_dir, "review-metadata.json"),
-                    os.path.join(args.output_dir, "review-inline.txt")
+                    os.path.join(args.output_dir, "review-inline.txt"),
+                    os.path.join(args.output_dir, "review-fix-patches.diff"),
                 ]
                 for old_file in old_files:
                     if os.path.exists(old_file):
@@ -767,7 +768,8 @@ Examples:
                     old_files = [
                         os.path.join(commit_dir, "review-metadata.json"),
                         os.path.join(commit_dir, "review-pre-verification.json"),
-                        os.path.join(commit_dir, "review-inline.txt")
+                        os.path.join(commit_dir, "review-inline.txt"),
+                        os.path.join(commit_dir, "review-fix-patches.diff"),
                     ]
                     for old_file in old_files:
                         if os.path.exists(old_file):
