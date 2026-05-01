@@ -272,7 +272,7 @@ python kernel_review_agent.py HEAD --verbose
 python kernel_review_agent.py HEAD~10..HEAD --log-file review.log
 ```
 
-`--log-file` redirects all progress and summary output to the specified file. Error messages continue to go to stderr so they remain visible in the terminal. Useful for batch runs where you want to capture output without redirecting the shell.
+`--log-file` redirects all output — including warnings and errors — to the specified file. Useful for batch runs where you want to capture the complete output without redirecting the shell.
 
 ### SUSE Kernel Integration
 

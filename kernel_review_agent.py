@@ -258,10 +258,12 @@ Examples:
 
     args = parser.parse_args()
 
-    # Redirect stdout to log file if requested
+    # Redirect stdout and stderr to log file if requested
     if args.log_file:
         try:
-            sys.stdout = open(args.log_file, 'w', buffering=1)
+            log = open(args.log_file, 'w', buffering=1)
+            sys.stdout = log
+            sys.stderr = log
         except OSError as e:
             print(f"Error: Cannot open log file {args.log_file}: {e}", file=sys.stderr)
             return 1
