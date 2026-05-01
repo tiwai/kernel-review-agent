@@ -243,17 +243,40 @@ class ReviewWorkflow:
 
         return context
 
+    # C keywords that appear at the start of hunk context lines but are not function names
+    _C_NON_FUNCTION_WORDS = frozenset({
+        'static', 'inline', 'extern', 'const', 'volatile', 'struct', 'union',
+        'enum', 'typedef', 'void', 'int', 'long', 'unsigned', 'signed', 'char',
+        'short', 'float', 'double', 'bool', 'if', 'else', 'for', 'while', 'do',
+        'switch', 'case', 'return', 'goto', 'break', 'continue', 'sizeof',
+    })
+
     def _extract_changed_functions(self, diff: str) -> List[str]:
-        """Extract function names from diff hunks."""
+        """Extract function names from diff hunk headers (@@ ... @@ context)."""
         functions = set()
 
-        # Look for function context in hunk headers: @@ ... @@ function_name
         for line in diff.split('\n'):
-            if line.startswith('@@'):
-                # Extract function name after the second @@
-                match = re.search(r'@@.*@@\s*(\w+)', line)
-                if match:
-                    functions.add(match.group(1))
+            if not line.startswith('@@'):
+                continue
+            # Hunk header: @@ -a,b +c,d @@ [optional context]
+            # Context is typically "type qualifier... funcname(..." or just "funcname(..."
+            # Grab the identifier immediately before the first '('
+            after = re.search(r'@@[^@]*@@\s*(.*)', line)
+            if not after:
+                continue
+            context = after.group(1).strip()
+            # Find the word just before '(' — that's the function name
+            m = re.search(r'(\w+)\s*\(', context)
+            if m:
+                name = m.group(1)
+                if name not in self._C_NON_FUNCTION_WORDS:
+                    functions.add(name)
+                    continue
+            # Fallback: first non-keyword word in the context
+            for word in re.findall(r'\w+', context):
+                if word not in self._C_NON_FUNCTION_WORDS:
+                    functions.add(word)
+                    break
 
         return list(functions)
 
