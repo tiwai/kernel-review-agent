@@ -461,6 +461,20 @@ Can also be set persistently in the config file:
 { "REEVALUATION_TIME_THRESHOLD": 60 }
 ```
 
+```bash
+# Increase the maximum tool-call iterations per step
+python kernel_review_agent.py HEAD --max-tool-iterations 20
+```
+
+When using tool-calling mode (`--enable-tools`), each analysis step runs up to N tool-call iterations before producing a final answer. The default is 10. For complex commits with many changed files, increasing this limit gives the LLM more rounds to gather context before concluding.
+
+**Default:** 10 (configurable via `MAX_TOOL_ITERATIONS` in config file)
+
+Can also be set persistently in the config file:
+```json
+{ "MAX_TOOL_ITERATIONS": 20 }
+```
+
 ### Debug Options
 
 ```bash

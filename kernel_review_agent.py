@@ -222,6 +222,14 @@ Examples:
     )
 
     parser.add_argument(
+        "--max-tool-iterations",
+        type=int,
+        default=config.MAX_TOOL_ITERATIONS,
+        metavar="N",
+        help=f"Maximum number of tool-call iterations per step (default: {config.MAX_TOOL_ITERATIONS})"
+    )
+
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Force re-review even if output directory already exists for the commit"
@@ -550,7 +558,8 @@ Examples:
                 suse_verifier=suse_verifier,
                 enable_tools=True,
                 upstream_repo=upstream_repo_extractor,
-                propose_fixes=args.propose_fixes
+                propose_fixes=args.propose_fixes,
+                max_tool_iterations=args.max_tool_iterations
             )
 
     if not args.enable_tools:
@@ -568,7 +577,8 @@ Examples:
             debug=args.debug,
             skip_verification=args.skip_verification,
             suse_verifier=suse_verifier,
-            propose_fixes=args.propose_fixes
+            propose_fixes=args.propose_fixes,
+            max_tool_iterations=args.max_tool_iterations
         )
     formatter = ReportFormatter()
     metadata_gen = MetadataGenerator()

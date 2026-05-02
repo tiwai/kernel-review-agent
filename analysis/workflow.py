@@ -36,7 +36,8 @@ class ReviewWorkflow:
         debug: bool = False,
         skip_verification: bool = False,
         suse_verifier: Optional['SuseUpstreamVerifier'] = None,
-        propose_fixes: bool = False
+        propose_fixes: bool = False,
+        max_tool_iterations: int = None
     ):
         """
         Initialize review workflow.
@@ -50,6 +51,7 @@ class ReviewWorkflow:
             skip_verification: Skip false-positive verification step
             suse_verifier: SUSE upstream verifier (optional)
             propose_fixes: Generate fix patch proposals for verified findings
+            max_tool_iterations: Max tool-call iterations per step (None = use config default)
         """
         self.llm = llm_client
         self.prompts = prompt_loader
@@ -59,6 +61,7 @@ class ReviewWorkflow:
         self.skip_verification = skip_verification
         self.suse_verifier = suse_verifier
         self.propose_fixes = propose_fixes
+        self.max_tool_iterations = max_tool_iterations if max_tool_iterations is not None else config.MAX_TOOL_ITERATIONS
 
     def execute_review(self, commit: Commit) -> ReviewResult:
         """
@@ -825,7 +828,7 @@ Patches:"""
                 response = self.llm.analyze_with_tools(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
-                    max_iterations=8,
+                    max_iterations=self.max_tool_iterations,
                     max_tokens=config.ANALYZE_MAX_TOKENS
                 )
             else:

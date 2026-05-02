@@ -209,7 +209,7 @@ Be concise."""
                 response = self.llm.analyze_with_tools(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
-                    max_iterations=5,
+                    max_iterations=self.max_tool_iterations,
                     max_tokens=2000
                 )
 
@@ -328,7 +328,7 @@ Be concise but include the lock trace."""
                 response = self.llm.analyze_with_tools(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
-                    max_iterations=6,
+                    max_iterations=self.max_tool_iterations,
                     max_tokens=3000
                 )
 
@@ -458,7 +458,7 @@ Be concise but show the trace."""
                 response = self.llm.analyze_with_tools(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
-                    max_iterations=8,
+                    max_iterations=self.max_tool_iterations,
                     max_tokens=3000
                 )
 
