@@ -270,9 +270,22 @@ python kernel_review_agent.py HEAD --verbose
 
 # Write progress output to a log file instead of stdout
 python kernel_review_agent.py HEAD~10..HEAD --log-file review.log
+
+# Prefix every output line with a timestamp
+python kernel_review_agent.py HEAD --timestamps
+
+# Combine both for a timestamped log file
+python kernel_review_agent.py HEAD~10..HEAD --log-file review.log --timestamps
 ```
 
 `--log-file` redirects all output — including warnings and errors — to the specified file. Useful for batch runs where you want to capture the complete output without redirecting the shell.
+
+`--timestamps` prepends `[HH:MM:SS]` to every output line, making it easy to see how long each analysis step takes. Can be combined with `--log-file`.
+
+Can also be enabled persistently in the config file:
+```json
+{ "TIMESTAMPS": true }
+```
 
 ### SUSE Kernel Integration
 

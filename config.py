@@ -116,6 +116,9 @@ def load_configuration():
         # Tool calling: maximum number of tool-call iterations per step
         'MAX_TOOL_ITERATIONS': 10,
 
+        # Output timestamps: prefix each line with HH:MM:SS
+        'TIMESTAMPS': False,
+
         # Output defaults
         'DEFAULT_OUTPUT_DIR': '.',
 
@@ -179,3 +182,4 @@ SUSE_KERNEL_SOURCE_REPO = _config['SUSE_KERNEL_SOURCE_REPO']
 UPSTREAM_LINUX_REPO = _config['UPSTREAM_LINUX_REPO']
 REEVALUATION_TIME_THRESHOLD = _config['REEVALUATION_TIME_THRESHOLD']
 MAX_TOOL_ITERATIONS = _config['MAX_TOOL_ITERATIONS']
+TIMESTAMPS = _config['TIMESTAMPS']

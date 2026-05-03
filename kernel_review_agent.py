@@ -10,6 +10,34 @@ import argparse
 import sys
 import os
 import time
+from datetime import datetime
+
+
+class TimestampedStream:
+    """Wraps a stream and prepends HH:MM:SS to every line."""
+
+    def __init__(self, stream):
+        self._stream = stream
+        self._at_line_start = True
+
+    def write(self, data):
+        if not data:
+            return
+        output = []
+        for ch in data:
+            if self._at_line_start and ch != '\n':
+                output.append(datetime.now().strftime('[%H:%M:%S] '))
+                self._at_line_start = False
+            output.append(ch)
+            if ch == '\n':
+                self._at_line_start = True
+        self._stream.write(''.join(output))
+
+    def flush(self):
+        self._stream.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
 
 # Add module directory to Python path for system-wide installation
 # This allows the script to find modules when installed in /usr/bin
@@ -270,6 +298,13 @@ Examples:
         help="Write output to FILE instead of stdout"
     )
 
+    parser.add_argument(
+        "--timestamps",
+        action="store_true",
+        default=config.TIMESTAMPS,
+        help="Prefix each output line with a timestamp (HH:MM:SS)"
+    )
+
     args = parser.parse_args()
 
     # Redirect stdout and stderr to log file if requested
@@ -281,6 +316,11 @@ Examples:
         except OSError as e:
             print(f"Error: Cannot open log file {args.log_file}: {e}", file=sys.stderr)
             return 1
+
+    # Wrap streams with timestamp prefixer if requested
+    if args.timestamps:
+        sys.stdout = TimestampedStream(sys.stdout)
+        sys.stderr = TimestampedStream(sys.stderr)
 
     # Handle --disable-tools flag (overrides default)
     if args.disable_tools:

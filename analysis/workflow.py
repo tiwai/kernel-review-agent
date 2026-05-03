@@ -836,11 +836,28 @@ Patches:"""
                     system_prompt, user_prompt,
                     max_tokens=config.ANALYZE_MAX_TOKENS
                 )
-            return response.strip()
+            patches = response.strip()
+            if not self._is_valid_diff(patches):
+                preview = '\n'.join(patches.splitlines()[:5])
+                print(f"[WARNING] Proposed fix patches do not look like a valid diff; discarding", file=sys.stderr)
+                if self.debug:
+                    print(f"[DEBUG] Discarded patch content (first lines):\n{preview}", file=sys.stderr)
+                return None
+            return patches
         except Exception as e:
             if self.verbose or self.debug:
                 print(f"[WARNING] Failed to propose fixes: {e}", file=sys.stderr)
-            return ""
+            return None
+
+    @staticmethod
+    def _is_valid_diff(text: str) -> bool:
+        """Return True if text looks like a unified diff (has @@ hunk and --- / +++ headers)."""
+        if not text:
+            return False
+        lines = text.splitlines()
+        has_hunk = any(l.startswith('@@') for l in lines)
+        has_header = any(l.startswith('---') or l.startswith('+++') for l in lines)
+        return has_hunk and has_header
 
     def _generate_summary(
         self,
