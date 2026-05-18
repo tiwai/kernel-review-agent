@@ -96,7 +96,8 @@ class AnthropicClient(LLMClient):
             {"role": "user", "content": user_content}
         ]
 
-        return self._call_with_retry(system_prompt, messages, max_tokens, temperature)
+        response_text, _ = self._call_with_retry(system_prompt, messages, max_tokens, temperature)
+        return response_text
 
     def analyze_with_context(
         self,
@@ -125,7 +126,8 @@ class AnthropicClient(LLMClient):
             else:
                 user_messages.append(msg)
 
-        return self._call_with_retry(system_prompt, user_messages, max_tokens, temperature)
+        response_text, _ = self._call_with_retry(system_prompt, user_messages, max_tokens, temperature)
+        return response_text
 
     def _call_with_retry(
         self,
@@ -133,8 +135,14 @@ class AnthropicClient(LLMClient):
         messages: List[Dict[str, str]],
         max_tokens: int,
         temperature: Optional[float]
-    ) -> str:
-        """Call Anthropic API with exponential backoff retry."""
+    ) -> tuple[str, Dict[str, int]]:
+        """
+        Call Anthropic API with exponential backoff retry.
+
+        Returns:
+            Tuple of (response_text, usage_dict) where usage_dict contains
+            'prompt_tokens', 'completion_tokens', and 'total_tokens'
+        """
         last_error = None
 
         # Increment call counter for dump filenames
@@ -172,6 +180,17 @@ class AnthropicClient(LLMClient):
                 response_text = response.content[0].text
                 stop_reason = response.stop_reason
 
+                # Extract token usage
+                usage_dict = {
+                    'prompt_tokens': response.usage.input_tokens,
+                    'completion_tokens': response.usage.output_tokens,
+                    'total_tokens': response.usage.input_tokens + response.usage.output_tokens
+                }
+                # Accumulate to totals
+                self.total_prompt_tokens += usage_dict['prompt_tokens']
+                self.total_completion_tokens += usage_dict['completion_tokens']
+                self.total_tokens += usage_dict['total_tokens']
+
                 if self.debug:
                     print(f"[DEBUG] Response length: {len(response_text)} chars")
                     print(f"[DEBUG] Stop reason: {stop_reason}")
@@ -200,7 +219,7 @@ class AnthropicClient(LLMClient):
                 if self.dump_prompts:
                     self._dump_response(call_id, response_text)
 
-                return response_text
+                return response_text, usage_dict
 
             except Exception as e:
                 last_error = e

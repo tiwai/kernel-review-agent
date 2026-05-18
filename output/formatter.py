@@ -26,7 +26,9 @@ class ReportFormatter:
         suse_verification: Dict = None,
         elapsed_time: float = None,
         is_patch: bool = False,
-        model_name: str = None
+        model_name: str = None,
+        input_tokens: int = None,
+        output_tokens: int = None
     ) -> str:
         """
         Format review findings as LKML-compliant plain text.
@@ -39,6 +41,8 @@ class ReportFormatter:
             elapsed_time: Optional elapsed time in seconds
             is_patch: True if reviewing a patch file (omits commit SHA)
             model_name: Optional LLM model name used for review
+            input_tokens: Optional total input/prompt tokens used
+            output_tokens: Optional total output/completion tokens used
 
         Returns:
             Formatted plain text report
@@ -111,6 +115,14 @@ class ReportFormatter:
         # Model name (if provided)
         if model_name is not None:
             lines.append(f"Review-model: {model_name}")
+            lines.append("")
+
+        # Token usage (if provided)
+        if input_tokens is not None and output_tokens is not None:
+            total_tokens = input_tokens + output_tokens
+            lines.append(f"Input-tokens: {input_tokens}")
+            lines.append(f"Output-tokens: {output_tokens}")
+            lines.append(f"Total-tokens: {total_tokens}")
             lines.append("")
 
         # If no findings, end here

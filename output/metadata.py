@@ -14,7 +14,9 @@ class MetadataGenerator:
         findings: List[Dict],
         elapsed_time: float = None,
         is_patch: bool = False,
-        model_name: str = None
+        model_name: str = None,
+        input_tokens: int = None,
+        output_tokens: int = None
     ) -> Dict:
         """
         Generate metadata JSON.
@@ -25,6 +27,8 @@ class MetadataGenerator:
             elapsed_time: Optional elapsed time in seconds
             is_patch: True if reviewing a patch file (omits SHA field)
             model_name: Optional LLM model name used for review
+            input_tokens: Optional total input/prompt tokens used
+            output_tokens: Optional total output/completion tokens used
 
         Returns:
             Metadata dictionary
@@ -53,6 +57,12 @@ class MetadataGenerator:
         # Include model name if provided
         if model_name is not None:
             metadata["model"] = model_name
+
+        # Include token usage if provided
+        if input_tokens is not None and output_tokens is not None:
+            metadata["input-tokens"] = input_tokens
+            metadata["output-tokens"] = output_tokens
+            metadata["total-tokens"] = input_tokens + output_tokens
 
         # Include SUSE commit IDs if present (not in patch mode)
         if not is_patch and commit.suse_commit:

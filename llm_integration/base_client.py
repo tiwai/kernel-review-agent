@@ -32,6 +32,10 @@ class LLMClient(ABC):
         self.dump_prompts = dump_prompts
         self.dump_dir = dump_dir
         self.call_counter = 0
+        # Token usage tracking
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+        self.total_tokens = 0
 
     @abstractmethod
     def analyze_code(
@@ -78,3 +82,22 @@ class LLMClient(ABC):
     def _get_provider_name(self) -> str:
         """Get the name of this LLM provider."""
         return self.__class__.__name__.replace('Client', '')
+
+    def get_token_usage(self) -> Dict[str, int]:
+        """
+        Get total token usage for all calls made by this client.
+
+        Returns:
+            Dictionary with 'prompt_tokens', 'completion_tokens', 'total_tokens'
+        """
+        return {
+            'prompt_tokens': self.total_prompt_tokens,
+            'completion_tokens': self.total_completion_tokens,
+            'total_tokens': self.total_tokens
+        }
+
+    def reset_token_usage(self):
+        """Reset token usage counters."""
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+        self.total_tokens = 0

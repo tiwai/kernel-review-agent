@@ -22,6 +22,8 @@ class ReviewResult:
     suse_verification: Optional[Dict] = None  # SUSE upstream verification result
     backport_comparison: Optional[Dict] = None  # Backport quality comparison
     fix_patches: Optional[str] = None  # Proposed fix patches (unified diff)
+    input_tokens: int = 0  # Total input/prompt tokens used
+    output_tokens: int = 0  # Total output/completion tokens used
 
 
 class ReviewWorkflow:
@@ -73,6 +75,9 @@ class ReviewWorkflow:
         Returns:
             ReviewResult with findings and metadata
         """
+        # Reset token usage counters at the start of each review
+        self.llm.reset_token_usage()
+
         if self.verbose:
             print(f"\nReviewing commit {commit.sha[:12]}...")
             print(f"Subject: {commit.subject}\n")
@@ -206,12 +211,21 @@ class ReviewWorkflow:
         if self.verbose:
             print(f"\nReview complete: {len(verified)} issue(s) found\n")
 
+        # Get token usage from LLM client
+        token_usage = self.llm.get_token_usage()
+        if self.debug:
+            print(f"[DEBUG] Total token usage - Input: {token_usage['prompt_tokens']}, "
+                  f"Output: {token_usage['completion_tokens']}, "
+                  f"Total: {token_usage['total_tokens']}")
+
         return ReviewResult(
             findings=verified,
             summary=summary,
             subsystems_loaded=subsystems,
             suse_verification=suse_verification_result,
-            fix_patches=fix_patches
+            fix_patches=fix_patches,
+            input_tokens=token_usage['prompt_tokens'],
+            output_tokens=token_usage['completion_tokens']
         )
 
     def _gather_context(self, commit: Commit) -> Dict:
