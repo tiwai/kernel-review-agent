@@ -12,6 +12,7 @@ class SuseUpstreamVerifier:
         self,
         kernel_source_repo: Optional[str] = None,
         upstream_repo: Optional[str] = None,
+        llm_client: Optional[object] = None,
         verbose: bool = False,
         debug: bool = False
     ):
@@ -21,11 +22,13 @@ class SuseUpstreamVerifier:
         Args:
             kernel_source_repo: Path to SUSE kernel-source repository
             upstream_repo: Path to upstream Linux kernel repository
+            llm_client: LLM client for semantic verification
             verbose: Enable verbose output
             debug: Enable debug output
         """
         self.verbose = verbose
         self.debug = debug
+        self.llm = llm_client
 
         # Initialize repo extractors if paths provided
         self.kernel_source = None
@@ -384,6 +387,13 @@ class SuseUpstreamVerifier:
                     print(f"[DEBUG] Found key pattern in upstream: {pattern}")
                 return True
 
+        # Strategy 4: Semantic Verification using LLM
+        if self.llm:
+            if self.debug:
+                print(f"[DEBUG] Falling back to semantic verification for {finding.get('type')}")
+            
+            return self._verify_finding_semantically(finding, upstream_commit, downstream_commit)
+
         # If we have no evidence and no location match, default to upstream
         # (better to over-report as upstream than miss upstream issues)
         if not evidence and not location:
@@ -449,3 +459,44 @@ class SuseUpstreamVerifier:
                                 return True
 
         return False
+
+    def _verify_finding_semantically(
+        self,
+        finding: Dict,
+        upstream_commit: Commit,
+        downstream_commit: Commit
+    ) -> bool:
+        """Use LLM to semantically compare upstream and downstream diffs."""
+        system_prompt = """You are a Linux kernel maintainer verifying if a bug found 
+in a SUSE backport is also present in the original upstream commit.
+
+Backports often have slight context shifts (line numbers, variable renaming, or 
+different surrounding code), but the underlying logic defect might be the same.
+
+Your goal is to determine if the logic defect described in the finding exists 
+in the upstream diff."""
+
+        user_prompt = f"""FINDING DESCRIPTION:
+Type: {finding.get('type')}
+Message: {finding.get('message')}
+Evidence: {finding.get('evidence')}
+
+DOWNSTREAM (SUSE) DIFF:
+{downstream_commit.diff[:2000]}
+
+UPSTREAM DIFF:
+{upstream_commit.diff[:2000]}
+
+Task: Does the underlying logic defect described in the finding also exist in the UPSTREAM diff?
+Even if the code is slightly different, is the BUG the same?
+
+Answer ONLY: YES or NO."""
+
+        try:
+            # We use a simple analyze_code call for this binary classification
+            response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=100)
+            return 'yes' in response.lower()
+        except Exception as e:
+            if self.debug:
+                print(f"[DEBUG] Semantic upstream verification failed: {e}")
+            return True # Default to True (upstream) to avoid over-reporting downstream-only bugs

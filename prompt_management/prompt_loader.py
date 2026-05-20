@@ -67,9 +67,46 @@ Focus exclusively on finding potential regressions in the code changes.
         """Load technical-patterns.md (bug pattern encyclopedia)."""
         return self.load_file("technical-patterns.md")
 
-    def load_false_positive_guide(self) -> str:
-        """Load false-positive-guide.md (verification checks)."""
-        return self.load_file("false-positive-guide.md")
+    def load_false_positive_guide(self, category: str = None) -> str:
+        """
+        Load false-positive-guide.md (verification checks).
+        Supports modular guides if category is provided.
+        """
+        core_guide = self.load_file("fp-guide-core.md")
+        
+        if not category:
+            # Fallback to the original full guide if it exists, or just core
+            try:
+                return self.load_file("false-positive-guide.md")
+            except RuntimeError:
+                return core_guide
+
+        # Map categories to specific guide files
+        category_map = {
+            'lock': 'fp-guide-locking.md',
+            'deadlock': 'fp-guide-locking.md',
+            'uaf': 'fp-guide-refcount.md',
+            'use-after-free': 'fp-guide-refcount.md',
+            'refcount': 'fp-guide-refcount.md',
+            'leak': 'fp-guide-leaks.md',
+            'race': 'fp-guide-races.md',
+            'null': 'fp-guide-null.md'
+        }
+
+        specific_guide_file = None
+        for key, filename in category_map.items():
+            if key in category.lower():
+                specific_guide_file = filename
+                break
+        
+        if specific_guide_file:
+            try:
+                specific_content = self.load_file(specific_guide_file)
+                return core_guide + "\n\n" + specific_content
+            except RuntimeError:
+                return core_guide
+        
+        return core_guide
 
     def load_backport_verification_guide(self) -> str:
         """Load backport-verification.md (backport quality checks)."""
@@ -130,7 +167,8 @@ Focus exclusively on finding potential regressions in the code changes.
         include_technical_patterns: bool = True,
         include_false_positive_guide: bool = False,
         include_backport_guide: bool = False,
-        subsystem_guides: List[str] = None
+        subsystem_guides: List[str] = None,
+        fp_category: str = None
     ) -> str:
         """
         Build comprehensive system prompt for LLM.
@@ -140,6 +178,7 @@ Focus exclusively on finding potential regressions in the code changes.
             include_false_positive_guide: Include verification guide
             include_backport_guide: Include backport verification guide
             subsystem_guides: List of subsystem guide filenames to include
+            fp_category: Specific category for false-positive guide
 
         Returns:
             Complete system prompt
@@ -150,7 +189,7 @@ Focus exclusively on finding potential regressions in the code changes.
             parts.append("\n# TECHNICAL PATTERNS\n\n" + self.load_technical_patterns())
 
         if include_false_positive_guide:
-            parts.append("\n# FALSE POSITIVE PREVENTION\n\n" + self.load_false_positive_guide())
+            parts.append("\n# FALSE POSITIVE PREVENTION\n\n" + self.load_false_positive_guide(fp_category))
 
         if include_backport_guide:
             backport_content = self.load_backport_verification_guide()

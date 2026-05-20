@@ -640,115 +640,157 @@ JSON array:"""
         commit: Commit
     ) -> List[Dict]:
         """
-        Task 3: Verify findings using false-positive guide.
+        Task 3: Verify findings using false-positive guide and adversarial persona.
 
-        Returns:
-            Verified findings (false positives removed)
+        Now processes findings sequentially to maintain model focus and uses
+        a skeptical persona to reduce confirmation bias.
         """
         if not findings:
             return []
 
-        # Load false positive prevention guide
-        # Include backport guide if this is a backport
-        include_backport = bool(commit.upstream_commit)
+        # Step 1: Hallucination Pre-Pass
+        # Deterministically check if cited evidence exists in the context/diff
+        real_findings = []
+        for finding in findings:
+            if self._verify_evidence_physical_existence(finding, context, commit):
+                real_findings.append(finding)
+            elif self.verbose or self.debug:
+                print(f"      [PRE-PASS] Discarding hallucinated finding: {finding.get('type')}")
 
-        system_prompt = self.prompts.build_system_prompt(
-            include_technical_patterns=True,
-            include_false_positive_guide=True,
-            include_backport_guide=include_backport,
-            subsystem_guides=[]
-        )
+        if not real_findings:
+            return []
 
-        findings_text = json.dumps(findings, indent=2)
+        # Step 2: Sequential Adversarial Verification
+        verified = []
+        
+        # Define adversarial persona once
+        adversarial_instruction = """
+# ADVERSARIAL PERSONA: THE SKEPTICAL SENIOR MAINTAINER
 
-        # Build commit context with message if available
-        commit_context = f"Subject: {commit.subject}"
-        if commit.message and commit.message.strip() and commit.message != commit.subject:
-            commit_context += f"\n\nCommit message:\n{commit.message}"
+You are a legendary, crusty Linux kernel maintainer. You have seen thousands of 
+incorrect bug reports from junior developers. Your default assumption is that 
+the reported bug is a FALSE POSITIVE until proven otherwise with absolute 
+certainty.
 
-        # Include full code context for verification
-        code_context_section = ""
-        if context.get("code_context_formatted"):
-            code_context_section = f"""
+Your goal is to DISPROVE the reported finding. You must look for:
+1. Implicit guard conditions (e.g. caller already holds the lock, or checked NULL)
+2. Subtle kernel invariants that make the "bug" structurally impossible
+3. Defensive programming suggestions masquerading as bugs
+4. Hallucinations where the junior developer misunderstood the C code logic
+
+If you cannot prove the bug exists with 100% certainty, you MUST discard it.
+"""
+        system_prompt = adversarial_instruction + "\n" + system_prompt_base
+
+        for i, finding in enumerate(real_findings):
+            if self.verbose:
+                print(f"      Verifying finding {i+1}/{len(real_findings)}: {finding.get('type')}...")
+
+            finding_type = finding.get('type', '')
+            finding_text = json.dumps(finding, indent=2)
+
+            # Build commit context with message if available
+            commit_context = f"Subject: {commit.subject}"
+            if commit.message and commit.message.strip() and commit.message != commit.subject:
+                commit_context += f"\n\nCommit message:\n{commit.message}"
+
+            # Step 2.1: Dynamically build system prompt for THIS specific finding category
+            include_backport = bool(commit.upstream_commit)
+            system_prompt_base = self.prompts.build_system_prompt(
+                include_technical_patterns=True,
+                include_false_positive_guide=True,
+                include_backport_guide=include_backport,
+                subsystem_guides=[],
+                fp_category=finding_type
+            )
+            system_prompt = adversarial_instruction + "\n" + system_prompt_base
+
+            # Include full code context for verification
+            code_context_section = ""
+            if context.get("code_context_formatted"):
+                code_context_section = f"""
 COMPLETE SOURCE CODE CONTEXT FOR VERIFICATION:
-Use the following complete function definitions and caller information to verify
-each finding. Check the actual code, not just assumptions from the diff.
-
 {context["code_context_formatted"]}
-
 """
 
-        user_prompt = f"""IMPORTANT: Your response must be a valid JSON array only. No prose, no explanation, no markdown. Start with [ and end with ].
+            user_prompt = f"""IMPORTANT: Your response must be a valid JSON array. If the finding is a REAL BUG, return it in the array: [{{...}}]. If it is a FALSE POSITIVE, return an empty array: [].
 
-Verify these findings against the false-positive prevention guide.
-
-For each finding, check:
-1. Is there concrete evidence this can happen?
-2. Is this defensive programming vs. a real bug?
-3. Are all assumptions verified with code?
-4. Use the complete source code context provided below to verify:
-   - Check how functions are actually called
-   - Verify error handling in callers
-   - Confirm the issue exists in the actual code, not just theory
+Task: As a skeptical maintainer, verify if this specific finding is a REAL BUG or a FALSE POSITIVE.
 
 {commit_context}
 
 {code_context_section}Commit diff:
 {commit.diff}
 
-Findings to verify:
-{findings_text}
+FINDING TO VERIFY:
+{finding_text}
 
-Return ONLY verified findings as a JSON array (discard false positives). No text before or after the JSON.
-Example format: [{{"category": "...", "type": "...", "message": "...", "evidence": "...", "severity": "..."}}]
-If all findings are false positives, return: []
+Rules:
+1. Use the False Positive Prevention Guide strictly.
+2. If the bug is even slightly doubtful or looks like a defensive programming suggestion, return [].
+3. Only if you are 100% certain it is a real regression, return the finding in a JSON array.
 
-JSON array:"""
+JSON array (empty [] if false positive):"""
 
-        response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=config.VERIFY_MAX_TOKENS)
-
-        # Parse JSON response
-        try:
-            json_str = self._extract_json_array(response)
-            if json_str is not None:
-                # Sanitize JSON to handle literal control characters from LLM
-                json_str = self._sanitize_json_string(json_str)
-                verified = json.loads(json_str)
-                return verified if isinstance(verified, list) else []
-            else:
-                if self.verbose or self.debug:
-                    print("[WARNING] No JSON array found in verification response", file=sys.stderr)
-                    print(f"[WARNING] Response preview: {response[:200]}...", file=sys.stderr)
-                schema = '[{{"category": "...", "type": "...", "message": "...", "evidence": "...", "severity": "..."}}]'
-                json_str = self._reformat_as_json(response, schema, max_tokens=config.VERIFY_MAX_TOKENS)
+            try:
+                response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=config.VERIFY_MAX_TOKENS)
+                
+                json_str = self._extract_json_array(response)
                 if json_str is not None:
-                    try:
-                        verified = json.loads(self._sanitize_json_string(json_str))
-                        return verified if isinstance(verified, list) else []
-                    except json.JSONDecodeError:
-                        pass
-                if self.verbose or self.debug:
-                    print("[WARNING] Keeping original findings", file=sys.stderr)
-                return findings
-        except json.JSONDecodeError as e:
-            if self.verbose or self.debug:
-                print(f"[ERROR] Failed to parse verification JSON: {e}", file=sys.stderr)
-
-                # Check if this looks like truncation
-                is_truncated = self._looks_truncated(json_str if 'json_str' in locals() else response)
-
-                if is_truncated:
-                    print(f"[ERROR] Response appears truncated (incomplete JSON)", file=sys.stderr)
-                    print(f"[ERROR] Last 100 chars: ...{response[-100:]}", file=sys.stderr)
-                    print(f"[ERROR] Try increasing VERIFY_MAX_TOKENS in config.py (current: {config.VERIFY_MAX_TOKENS})", file=sys.stderr)
+                    json_str = self._sanitize_json_string(json_str)
+                    result = json.loads(json_str)
+                    if isinstance(result, list) and len(result) > 0:
+                        verified.append(result[0])
+                    elif self.verbose or self.debug:
+                        print(f"      [VERIFY] Finding discarded as false positive: {finding.get('type')}")
                 else:
-                    print(f"[ERROR] JSON format issue (not truncation)", file=sys.stderr)
+                    # If parsing fails for one finding, we err on the side of caution with small models
+                    if self.debug:
+                        print(f"[DEBUG] Verification failed to return JSON for finding {i+1}")
+            except Exception as e:
+                if self.debug:
+                    print(f"[DEBUG] Error verifying finding {i+1}: {e}")
+                # On error, we keep it to be safe? Or discard? 
+                # The directive was to reduce false positives, so maybe discard if we can't verify.
+                # But for now, let's keep it to avoid missing real bugs due to transient errors.
+                verified.append(finding)
 
-                print("[WARNING] Keeping original findings to avoid losing data", file=sys.stderr)
-            # If parsing fails, keep original findings rather than discarding
-            return findings
+        return verified
 
-        return []
+    def _verify_evidence_physical_existence(self, finding: Dict, context: Dict, commit: Commit) -> bool:
+        """
+        Hallucination Pre-Pass: Deterministically verify that cited code/variables 
+        actually exist in the context or diff.
+        """
+        evidence = finding.get('evidence', '')
+        if not evidence:
+            return True # No evidence to verify, let the LLM handle it
+
+        # Extract potential identifiers (words) from evidence
+        identifiers = re.findall(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', evidence)
+        # Filter out C keywords and short common names
+        kernel_keywords = {'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'return', 'goto', 'break', 'continue', 'struct', 'union', 'enum', 'typedef', 'void', 'int', 'long', 'unsigned', 'signed', 'char', 'short', 'float', 'double', 'bool', 'sizeof', 'static', 'inline', 'extern', 'const', 'volatile', 'NULL', 'true', 'false'}
+        potential_vars = [i for i in identifiers if i not in kernel_keywords and len(i) > 2]
+        
+        if not potential_vars:
+            return True
+
+        # Search for these identifiers in diff and code context
+        full_text = commit.diff + "\n" + context.get("code_context_formatted", "")
+        
+        # We want to see at least SOME of the mentioned variables/functions
+        # Small models often hallucinate completely non-existent struct members or functions
+        match_count = 0
+        for var in set(potential_vars[:10]): # Check top 10 identifiers
+            if var in full_text:
+                match_count += 1
+        
+        # If we found at least one of the unique identifiers, it's likely not a total hallucination
+        # If we found none of them, it's highly suspicious
+        if match_count == 0 and len(set(potential_vars)) > 0:
+            return False
+            
+        return True
 
     def _propose_fixes(
         self,

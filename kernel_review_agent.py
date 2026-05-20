@@ -548,6 +548,7 @@ Examples:
             suse_verifier = SuseUpstreamVerifier(
                 kernel_source_repo=suse_kernel_source,
                 upstream_repo=upstream_linux,
+                llm_client=llm,
                 verbose=args.verbose,
                 debug=args.debug
             )

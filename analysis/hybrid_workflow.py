@@ -123,32 +123,96 @@ class HybridReviewWorkflow(ReviewWorkflow):
             Verified/enhanced findings
         """
         verified = []
+        specialized_verified_ids = set()
 
-        # Check for timer API issues specifically
+        # 1. Specialized: Check for timer API issues specifically
         timer_findings = self._verify_timer_api_issues(commit, findings)
         verified.extend(timer_findings)
+        
+        # Track which findings were handled by specialized verifiers
+        for f in findings:
+            if f.get('type') in ['timer-api-conversion', 'timer-callback-signature'] or 'timer' in f.get('message', '').lower():
+                specialized_verified_ids.add(id(f))
 
-        # Check for locking issues (deadlocks, missing locks)
+        # 2. Specialized: Check for locking issues
         lock_findings = self._verify_lock_issues(commit, findings)
         verified.extend(lock_findings)
+        
+        for f in findings:
+            if any(word in f.get('type', '').lower() for word in ['lock', 'deadlock']) or \
+               any(word in f.get('message', '').lower() for word in ['deadlock', 'double-lock', 'recursive lock']):
+                specialized_verified_ids.add(id(f))
 
-        # Check for use-after-free issues (verify reference counting)
+        # 3. Specialized: Check for use-after-free issues
         uaf_findings = self._verify_uaf_issues(commit, findings)
         verified.extend(uaf_findings)
+        
+        for f in findings:
+            if 'use-after-free' in f.get('type', '').lower() or 'uaf' in f.get('type', '').lower():
+                specialized_verified_ids.add(id(f))
 
-        # Add other findings (not timer, lock, or UAF-related)
-        excluded_types = ['timer-api-conversion', 'timer-callback-signature',
-                          'deadlock', 'double-lock', 'missing-lock', 'lock-order',
-                          'use-after-free', 'uaf', 'double-free']
-        for finding in findings:
-            ftype = finding.get('type', '')
-            if (ftype not in excluded_types and
-                'lock' not in ftype.lower() and
-                'use-after-free' not in finding.get('message', '').lower() and
-                'uaf' not in ftype.lower()):
-                verified.append(finding)
+        # 4. Generic Tool-Based Verification for all other findings
+        other_findings = [f for f in findings if id(f) not in specialized_verified_ids]
+        
+        if other_findings and self.enable_tools:
+            if self.verbose:
+                print(f"  Verifying {len(other_findings)} other finding(s) with generic tool-based inspection...")
+            
+            for finding in other_findings:
+                if self._verify_finding_generic(commit, finding):
+                    verified.append(finding)
+                elif self.verbose:
+                    print(f"      → Discarded finding (could not verify evidence with tools): {finding.get('type')}")
+        else:
+            # If tools disabled, keep other findings (Task 3 in ReviewWorkflow will still run)
+            verified.extend(other_findings)
 
         return verified
+
+    def _verify_finding_generic(self, commit: Commit, finding: Dict) -> bool:
+        """
+        Generic tool-based verification for any finding.
+        Uses git_show and git_grep to confirm evidence.
+        """
+        system_prompt = """You are verifying a potential bug in Linux kernel code.
+Your goal is to use git tools to verify if the C code logic described in the finding 
+is actually present and logically sound.
+
+CRITICAL: If you cannot find the variables, functions, or logic described in the 
+evidence using git tools, it is a hallucination. Discard it."""
+
+        user_prompt = f"""FINDING TO VERIFY:
+Type: {finding.get('type')}
+Message: {finding.get('message')}
+Evidence: {finding.get('evidence')}
+
+COMMIT DIFF:
+{commit.diff[:2000]}
+
+Task: Use git tools to verify if this is a real bug or a hallucination.
+1. Locate the file and function in the current source code using git_show.
+2. Verify the existence of the variables and logic mentioned in the evidence.
+3. Determine if the reported issue is logically possible.
+
+Answer: REAL_BUG or HALLUCINATION. 
+If REAL_BUG, provide a one-sentence justification based on the source code you read."""
+
+        try:
+            response = self.llm.analyze_with_tools(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_iterations=self.max_tool_iterations,
+                max_tokens=2000
+            )
+            
+            response_lower = response.lower()
+            if 'real_bug' in response_lower and 'hallucination' not in response_lower:
+                return True
+            return False
+        except Exception as e:
+            if self.debug:
+                print(f"[DEBUG] Generic tool verification failed: {e}")
+            return True # Keep on error to avoid false negatives from tool failures
 
     def _verify_timer_api_issues(self, commit: Commit, findings: List[Dict]) -> List[Dict]:
         """
