@@ -653,6 +653,11 @@ Examples:
     skipped = 0
     failed_items = []  # Track failed commits/patches for summary
 
+    # Track timing for ETA calculation
+    total_review_time = 0.0
+    completed_reviews = 0
+    overall_start_time = time.time()
+
     # Patch mode: process patch files
     if args.patch:
         for i, patch_file in enumerate(items_to_process, 1):
@@ -665,7 +670,19 @@ Examples:
                     continue
 
                 if args.verbose:
-                    print(f"[{i}/{total_items}] Processing patch {patch_file}...")
+                    # Calculate ETA based on average time per review
+                    eta_str = ""
+                    if completed_reviews > 0:
+                        avg_time = total_review_time / completed_reviews
+                        remaining_items = total_items - i + 1
+                        eta_seconds = avg_time * remaining_items
+                        eta_minutes = int(eta_seconds / 60)
+                        eta_secs = int(eta_seconds % 60)
+                        if eta_minutes > 0:
+                            eta_str = f" (ETA: {eta_minutes}m {eta_secs}s)"
+                        else:
+                            eta_str = f" (ETA: {eta_secs}s)"
+                    print(f"[{i}/{total_items}] Processing patch {patch_file}...{eta_str}")
 
                 commit = git.from_patch_file(patch_file)
 
@@ -691,6 +708,10 @@ Examples:
                         elapsed_time = reeval_elapsed
                     elif args.verbose:
                         print(f"  Re-evaluation confirmed: no issues found")
+
+                # Update timing statistics for ETA calculation
+                total_review_time += elapsed_time
+                completed_reviews += 1
 
                 # Create output directory if needed
                 if args.output_dir != "." and not os.path.exists(args.output_dir):
@@ -793,7 +814,19 @@ Examples:
 
                 # Show progress for multiple commits
                 if total_items > 1 and args.verbose:
-                    print(f"[{i}/{total_items}] Processing commit {sha_short}...")
+                    # Calculate ETA based on average time per review
+                    eta_str = ""
+                    if completed_reviews > 0:
+                        avg_time = total_review_time / completed_reviews
+                        remaining_items = total_items - i + 1
+                        eta_seconds = avg_time * remaining_items
+                        eta_minutes = int(eta_seconds / 60)
+                        eta_secs = int(eta_seconds % 60)
+                        if eta_minutes > 0:
+                            eta_str = f" (ETA: {eta_minutes}m {eta_secs}s)"
+                        else:
+                            eta_str = f" (ETA: {eta_secs}s)"
+                    print(f"[{i}/{total_items}] Processing commit {sha_short}...{eta_str}")
 
                 # Execute review with timing
                 start_time = time.time()
@@ -817,6 +850,10 @@ Examples:
                         elapsed_time = reeval_elapsed
                     elif args.verbose:
                         print(f"  Re-evaluation confirmed: no issues found")
+
+                # Update timing statistics for ETA calculation
+                total_review_time += elapsed_time
+                completed_reviews += 1
 
                 # Create output directory after successful review
                 os.makedirs(commit_dir, exist_ok=True)
@@ -952,6 +989,13 @@ Examples:
             print(f"  ✗ {failed} failed")
         if skipped > 0:
             print(f"  ⊘ {skipped} skipped")
+
+        # Show timing statistics in verbose mode
+        if args.verbose and completed_reviews > 0:
+            overall_elapsed = time.time() - overall_start_time
+            avg_time = total_review_time / completed_reviews
+            print(f"  Time: {int(overall_elapsed/60)}m {int(overall_elapsed%60)}s total, {avg_time:.1f}s avg per review")
+
         print("=" * 70)
 
         # Show failed items for easy re-run
