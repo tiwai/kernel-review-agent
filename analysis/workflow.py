@@ -680,7 +680,6 @@ Your goal is to DISPROVE the reported finding. You must look for:
 
 If you cannot prove the bug exists with 100% certainty, you MUST discard it.
 """
-        system_prompt = adversarial_instruction + "\n" + system_prompt_base
 
         for i, finding in enumerate(real_findings):
             if self.verbose:
