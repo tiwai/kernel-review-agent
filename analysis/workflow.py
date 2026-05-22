@@ -24,6 +24,10 @@ class ReviewResult:
     fix_patches: Optional[str] = None  # Proposed fix patches (unified diff)
     input_tokens: int = 0  # Total input/prompt tokens used
     output_tokens: int = 0  # Total output/completion tokens used
+    # Pre-verification data (for re-verification support)
+    pre_verification_findings: Optional[List[Dict]] = None  # Findings before Task 3 verification
+    categories: Optional[List[Dict]] = None  # Change categories from Task 1
+    code_context_formatted: Optional[str] = None  # Code context for re-verification
 
 
 class ReviewWorkflow:
@@ -64,6 +68,111 @@ class ReviewWorkflow:
         self.suse_verifier = suse_verifier
         self.propose_fixes = propose_fixes
         self.max_tool_iterations = max_tool_iterations if max_tool_iterations is not None else config.MAX_TOOL_ITERATIONS
+
+    def reverify_from_json(self, json_path: str) -> ReviewResult:
+        """
+        Re-verify findings from a saved review-pre-verification.json file.
+
+        This allows re-running the verification step (Task 3) on previously
+        identified findings, useful for testing different verification strategies
+        or re-evaluating findings with updated models.
+
+        Args:
+            json_path: Path to review-pre-verification.json file
+
+        Returns:
+            ReviewResult with verified findings
+
+        Raises:
+            FileNotFoundError: If json_path doesn't exist
+            ValueError: If JSON is invalid or missing required fields
+        """
+        import json
+        import os
+
+        # Reset token usage counters
+        self.llm.reset_token_usage()
+
+        if not os.path.exists(json_path):
+            raise FileNotFoundError(f"Pre-verification file not found: {json_path}")
+
+        # Load pre-verification data
+        with open(json_path, 'r') as f:
+            pre_data = json.load(f)
+
+        # Validate required fields
+        required_fields = ['sha', 'subject', 'diff', 'findings']
+        missing = [f for f in required_fields if f not in pre_data]
+        if missing:
+            raise ValueError(f"Missing required fields in {json_path}: {', '.join(missing)}")
+
+        if self.verbose:
+            print(f"\nRe-verifying findings from {json_path}...")
+            print(f"SHA: {pre_data['sha'][:12]}")
+            print(f"Subject: {pre_data['subject']}")
+            print(f"Pre-verification findings: {pre_data.get('potential_issues_found', 0)}\n")
+
+        # Reconstruct commit object from saved data
+        from git_integration import Commit
+        commit = Commit(
+            sha=pre_data['sha'],
+            author=pre_data.get('author', 'Unknown'),
+            subject=pre_data['subject'],
+            message=pre_data.get('message', pre_data['subject']),
+            diff=pre_data['diff'],
+            files=pre_data.get('files', []),
+            upstream_commit=pre_data.get('upstream_commit'),
+            suse_commit=pre_data.get('suse_upstream_verification', {}).get('suse_commit_sha')
+        )
+
+        # Reconstruct context
+        context = {
+            'files': pre_data.get('files', []),
+            'code_context_formatted': pre_data.get('code_context', '')
+        }
+
+        # Get findings to verify
+        findings = pre_data['findings']
+        categories = pre_data.get('categories', [])
+        subsystems = pre_data.get('subsystems', [])
+        suse_verification = pre_data.get('suse_upstream_verification')
+
+        if self.verbose:
+            print(f"[3/3] Re-verifying {len(findings)} findings...")
+
+        # Task 3: Verify findings (same as normal workflow)
+        if self.skip_verification:
+            if self.verbose:
+                print("      Verification skipped (--skip-verification enabled)")
+            verified = findings
+        else:
+            verified = self._verify_findings(findings, context, commit)
+            if self.verbose:
+                print(f"      {len(verified)} issues after re-verification")
+                discarded = len(findings) - len(verified)
+                if discarded > 0:
+                    print(f"      Discarded {discarded} as false positives")
+
+        # Generate summary
+        summary = self._generate_summary(commit, verified, suse_verification)
+
+        # Get token usage
+        token_usage = self.llm.get_token_usage()
+
+        if self.verbose:
+            print(f"\nRe-verification complete: {len(verified)} issue(s) confirmed\n")
+
+        return ReviewResult(
+            findings=verified,
+            summary=summary,
+            subsystems_loaded=subsystems,
+            suse_verification=suse_verification,
+            input_tokens=token_usage['prompt_tokens'],
+            output_tokens=token_usage['completion_tokens'],
+            pre_verification_findings=findings,
+            categories=categories,
+            code_context_formatted=context.get('code_context_formatted')
+        )
 
     def execute_review(self, commit: Commit) -> ReviewResult:
         """
@@ -225,7 +334,11 @@ class ReviewWorkflow:
             suse_verification=suse_verification_result,
             fix_patches=fix_patches,
             input_tokens=token_usage['prompt_tokens'],
-            output_tokens=token_usage['completion_tokens']
+            output_tokens=token_usage['completion_tokens'],
+            # Pre-verification data for re-verification support
+            pre_verification_findings=findings if not self.skip_verification else None,
+            categories=categories,
+            code_context_formatted=context.get("code_context_formatted")
         )
 
     def _gather_context(self, commit: Commit) -> Dict:

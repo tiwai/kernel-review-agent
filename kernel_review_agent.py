@@ -244,6 +244,13 @@ Examples:
     )
 
     parser.add_argument(
+        "--reverify",
+        metavar="PATH",
+        help="Re-verify findings from existing review-pre-verification.json file(s). "
+             "PATH can be a file or directory containing pre-verification JSON files."
+    )
+
+    parser.add_argument(
         "--propose-fixes",
         action="store_true",
         help="Ask the LLM to propose fix patches for each identified issue (written to review-fix-patches.diff)"
@@ -365,16 +372,17 @@ Examples:
             print(f"Error: Failed to read list file {args.list}: {e}", file=sys.stderr)
             return 1
 
-    # Check if we have commits to process
-    if not args.commit:
-        print("Error: No commits specified. Provide commit SHA(s), ranges, or use --list FILE", file=sys.stderr)
+    # Check if we have commits to process (unless in reverify mode)
+    if not args.commit and not args.reverify:
+        print("Error: No commits specified. Provide commit SHA(s), ranges, use --list FILE, or use --reverify PATH", file=sys.stderr)
         return 1
 
-    # Check if in git repository (temporary extractor for check)
-    temp_git = CommitExtractor(verbose=args.verbose)
-    if not temp_git.is_git_repo():
-        print("Error: Must run in a git repository", file=sys.stderr)
-        return 1
+    # Check if in git repository (not required for reverify mode)
+    if not args.reverify:
+        temp_git = CommitExtractor(verbose=args.verbose)
+        if not temp_git.is_git_repo():
+            print("Error: Must run in a git repository", file=sys.stderr)
+            return 1
 
     # Show debug info if enabled
     if args.debug:
@@ -623,6 +631,123 @@ Examples:
         )
     formatter = ReportFormatter()
     metadata_gen = MetadataGenerator()
+
+    # Re-verification mode: load and re-verify existing pre-verification JSON files
+    if args.reverify:
+        reverify_path = args.reverify
+
+        # Collect JSON files to re-verify
+        json_files = []
+        if os.path.isfile(reverify_path):
+            if not reverify_path.endswith('.json'):
+                print(f"Error: File must be a JSON file: {reverify_path}", file=sys.stderr)
+                return 1
+            json_files.append(reverify_path)
+        elif os.path.isdir(reverify_path):
+            # Find all review-pre-verification.json files in directory tree
+            for root, dirs, files in os.walk(reverify_path):
+                for file in files:
+                    if file == 'review-pre-verification.json':
+                        json_files.append(os.path.join(root, file))
+            if not json_files:
+                print(f"Error: No review-pre-verification.json files found in {reverify_path}", file=sys.stderr)
+                return 1
+        else:
+            print(f"Error: Path not found: {reverify_path}", file=sys.stderr)
+            return 1
+
+        if args.verbose:
+            print(f"Re-verification mode: processing {len(json_files)} file(s)...\n")
+
+        # Track results
+        successful = 0
+        failed = 0
+
+        for i, json_file in enumerate(json_files, 1):
+            try:
+                if args.verbose:
+                    print(f"[{i}/{len(json_files)}] Re-verifying {json_file}...")
+
+                # Re-verify using workflow
+                start_time = time.time()
+                result = workflow.reverify_from_json(json_file)
+                elapsed_time = time.time() - start_time
+
+                # Reconstruct commit for output formatting
+                import json
+                with open(json_file, 'r') as f:
+                    pre_data = json.load(f)
+
+                from git_integration import Commit
+                commit = Commit(
+                    sha=pre_data['sha'],
+                    author=pre_data.get('author', 'Unknown'),
+                    subject=pre_data['subject'],
+                    message=pre_data.get('message', pre_data['subject']),
+                    diff=pre_data['diff'],
+                    files=pre_data.get('files', [])
+                )
+
+                # Determine output directory (same as original)
+                commit_dir = os.path.dirname(json_file)
+
+                # Generate outputs
+                report_text = formatter.format_report(
+                    commit,
+                    result.findings,
+                    summary=result.summary,
+                    suse_verification=result.suse_verification,
+                    elapsed_time=elapsed_time,
+                    model_name=args.model,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens
+                )
+                metadata = metadata_gen.generate(
+                    commit, result.findings,
+                    elapsed_time=elapsed_time,
+                    model_name=args.model,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens
+                )
+
+                # Write output files (overwrite existing)
+                report_path = os.path.join(commit_dir, "review-inline.txt")
+                metadata_path = os.path.join(commit_dir, "review-metadata.json")
+
+                with open(report_path, 'w') as f:
+                    f.write(report_text)
+
+                metadata_gen.save_json(metadata, metadata_path)
+
+                # Print summary
+                sha_short = commit.sha[:12]
+                print(f"✓ Re-verified {sha_short}: {commit.subject}")
+                print(f"  Issues found: {len(result.findings)} (was {pre_data.get('potential_issues_found', 0)} before verification)")
+                print(f"  Severity: {metadata['issue-severity-score']}")
+                print(f"  Report: {report_path}")
+                print(f"  Metadata: {metadata_path}")
+                print()
+
+                successful += 1
+
+            except Exception as e:
+                print(f"✗ Error re-verifying {json_file}: {e}", file=sys.stderr)
+                if args.debug:
+                    import traceback
+                    traceback.print_exc()
+                failed += 1
+                continue
+
+        # Print summary
+        if len(json_files) > 1:
+            print("=" * 70)
+            print(f"Re-verification Summary: {len(json_files)} total files")
+            print(f"  ✓ {successful} successful")
+            if failed > 0:
+                print(f"  ✗ {failed} failed")
+            print("=" * 70)
+
+        return 0 if successful > 0 else 1
 
     # Process arguments: either patch files or commit references
     if args.patch:
@@ -874,25 +999,23 @@ Examples:
                             if args.debug:
                                 print(f"[DEBUG] Removed stale file: {old_file}")
 
-                # Generate pre-verification metadata if SUSE verification was done
-                if result.suse_verification:
-                    pre_verification_findings = (
-                        result.suse_verification.get('findings_in_upstream', []) +
-                        result.suse_verification.get('findings_only_downstream', [])
+                # Generate pre-verification metadata if we have pre-verification findings
+                # This saves all information needed to re-verify findings later
+                if result.pre_verification_findings and len(result.pre_verification_findings) > 0:
+                    pre_verification_metadata = metadata_gen.generate_pre_verification_metadata(
+                        commit,
+                        result.pre_verification_findings,
+                        suse_verification=result.suse_verification,
+                        categories=result.categories,
+                        subsystems=result.subsystems_loaded,
+                        code_context_formatted=result.code_context_formatted
                     )
 
-                    if pre_verification_findings:
-                        pre_verification_metadata = metadata_gen.generate_pre_verification_metadata(
-                            commit,
-                            pre_verification_findings,
-                            result.suse_verification
-                        )
+                    pre_verify_path = os.path.join(commit_dir, "review-pre-verification.json")
+                    metadata_gen.save_json(pre_verification_metadata, pre_verify_path)
 
-                        pre_verify_path = os.path.join(commit_dir, "review-pre-verification.json")
-                        metadata_gen.save_json(pre_verification_metadata, pre_verify_path)
-
-                        if args.verbose:
-                            print(f"  Pre-verification findings saved: {pre_verify_path}")
+                    if args.verbose:
+                        print(f"  Pre-verification findings saved: {pre_verify_path}")
 
                 # Generate outputs
                 report_text = formatter.format_report(

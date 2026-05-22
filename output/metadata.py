@@ -78,30 +78,52 @@ class MetadataGenerator:
         self,
         commit: Commit,
         findings: List[Dict],
-        suse_verification: Optional[Dict] = None
+        suse_verification: Optional[Dict] = None,
+        categories: Optional[List[Dict]] = None,
+        subsystems: Optional[List[str]] = None,
+        code_context_formatted: Optional[str] = None
     ) -> Dict:
         """
         Generate metadata for pre-verification findings (before Task 3).
 
         This captures findings from Task 2 before false-positive check,
-        including SUSE upstream verification results.
+        including SUSE upstream verification results and all information
+        needed to re-verify the findings later.
 
         Args:
             commit: Commit object
             findings: Findings from Task 2 (before verification)
             suse_verification: SUSE upstream verification result
+            categories: Change categories from Task 1 (optional, for re-verification)
+            subsystems: Matched subsystems (optional, for re-verification)
+            code_context_formatted: Formatted code context (optional, for re-verification)
 
         Returns:
-            Pre-verification metadata dictionary
+            Pre-verification metadata dictionary with complete re-verification data
         """
         metadata = {
             "author": commit.author,
             "sha": commit.sha,
             "subject": commit.subject,
+            "message": commit.message,  # Full commit message for re-verification
+            "diff": commit.diff,  # Full diff needed for re-verification
+            "files": commit.files,  # Changed files list
             "potential_issues_found": len(findings),
             "findings": findings,  # Include full findings list
             "verification_status": "pre_verification"
         }
+
+        # Add change categories if provided (from Task 1)
+        if categories:
+            metadata['categories'] = categories
+
+        # Add matched subsystems if provided (for loading correct guides)
+        if subsystems:
+            metadata['subsystems'] = subsystems
+
+        # Add code context if provided (for full re-verification)
+        if code_context_formatted:
+            metadata['code_context'] = code_context_formatted
 
         # Add SUSE upstream information if available
         if suse_verification:
@@ -118,6 +140,10 @@ class MetadataGenerator:
                 suse_info['upstream_subject'] = upstream.subject
 
             metadata['suse_upstream_verification'] = suse_info
+
+        # Add upstream commit if present
+        if commit.upstream_commit:
+            metadata['upstream_commit'] = commit.upstream_commit
 
         return metadata
 
