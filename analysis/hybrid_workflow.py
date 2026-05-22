@@ -305,7 +305,7 @@ Be concise."""
                         'type': 'timer-callback-signature',
                         'severity': 'high',
                         'message': f"Timer callback {callback_name} signature mismatch (verified with code inspection)",
-                        'evidence': response[:300],
+                        'evidence': response,
                         'tool_verified': True
                     })
 

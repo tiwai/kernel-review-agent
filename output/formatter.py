@@ -179,7 +179,17 @@ class ReportFormatter:
                 # Add evidence if available
                 evidence = finding.get('evidence', '')
                 if evidence:
-                    result += "\n" + evidence + "\n"
+                    # Evidence may contain formatted text (markdown, code blocks)
+                    # Preserve formatting but ensure reasonable line lengths
+                    evidence_lines = evidence.split('\n')
+                    formatted_evidence = []
+                    for line in evidence_lines:
+                        # If line is very long and doesn't look like code, wrap it
+                        if len(line) > self.line_width and not line.strip().startswith(('>', '-', '*', '`')):
+                            formatted_evidence.extend(self._wrap_text(line))
+                        else:
+                            formatted_evidence.append(line)
+                    result += "\n" + "\n".join(formatted_evidence) + "\n"
 
                 if i < len(findings):
                     result += "\n"

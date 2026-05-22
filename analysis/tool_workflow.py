@@ -182,7 +182,7 @@ Respond: BUG or OK"""
                         'type': 'timer-callback-signature',
                         'severity': 'high',
                         'message': f"Timer callback {callback} signature mismatch",
-                        'evidence': response[:250]
+                        'evidence': response
                     })
 
             except Exception as e:
