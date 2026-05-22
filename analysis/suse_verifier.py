@@ -494,7 +494,8 @@ Answer ONLY: YES or NO."""
 
         try:
             # We use a simple analyze_code call for this binary classification
-            response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=100)
+            # Use 1000 tokens to allow for verbose models that might explain before answering
+            response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=1000)
             return 'yes' in response.lower()
         except Exception as e:
             if self.debug:
