@@ -175,26 +175,36 @@ class HybridReviewWorkflow(ReviewWorkflow):
         Uses git_show and git_grep to confirm evidence.
         """
         system_prompt = """You are verifying a potential bug in Linux kernel code.
-Your goal is to use git tools to verify if the C code logic described in the finding 
+Your goal is to use git tools to verify if the C code logic described in the finding
 is actually present and logically sound.
 
-CRITICAL: If you cannot find the variables, functions, or logic described in the 
+CRITICAL: If you cannot find the variables, functions, or logic described in the
 evidence using git tools, it is a hallucination. Discard it."""
+
+        # Format file list for the prompt
+        files_str = "\n".join(f"  - {f}" for f in commit.files)
 
         user_prompt = f"""FINDING TO VERIFY:
 Type: {finding.get('type')}
 Message: {finding.get('message')}
 Evidence: {finding.get('evidence')}
 
+COMMIT INFO:
+Commit SHA: {commit.sha}
+Modified files:
+{files_str}
+
 COMMIT DIFF:
 {commit.diff[:2000]}
 
 Task: Use git tools to verify if this is a real bug or a hallucination.
 1. Locate the file and function in the current source code using git_show.
+   Example: git_show(commit="{commit.sha}", path="path/to/file.c")
 2. Verify the existence of the variables and logic mentioned in the evidence.
+   Example: git_grep(pattern="function_name", file_pattern="*.c")
 3. Determine if the reported issue is logically possible.
 
-Answer: REAL_BUG or HALLUCINATION. 
+Answer: REAL_BUG or HALLUCINATION.
 If REAL_BUG, provide a one-sentence justification based on the source code you read."""
 
         try:
@@ -255,17 +265,26 @@ Timer APIs have INCOMPATIBLE callback signatures:
 
 You have git tools to read code. Use them to verify the callback signature."""
 
-            user_prompt = f"""This diff changes timer setup:
+            files_str = "\n".join(f"  - {f}" for f in commit.files)
 
+            user_prompt = f"""COMMIT INFO:
+Commit SHA: {commit.sha}
+Modified files:
+{files_str}
+
+COMMIT DIFF:
 {commit.diff[:2000]}
 
 Task: Verify if callback function `{callback_name}` has the correct signature.
 
 Steps:
 1. Use git_grep to find the definition of `{callback_name}`
-2. Check its parameter type
-3. Check which timer API is being used (look for timer_setup or setup_timer in the diff)
-4. Answer: Does the signature match the API? (YES = correct, NO = bug)
+   Example: git_grep(pattern="{callback_name}", file_pattern="*.c")
+2. Or use git_show to read the file containing the callback
+   Example: git_show(commit="{commit.sha}", path="path/to/file.c")
+3. Check its parameter type
+4. Check which timer API is being used (look for timer_setup or setup_timer in the diff)
+5. Answer: Does the signature match the API? (YES = correct, NO = bug)
 
 Be concise."""
 
@@ -362,16 +381,24 @@ CRITICAL REQUIREMENTS:
 
 DO NOT report a deadlock unless you can prove the lock is held at both acquisition points."""
 
+            files_str = "\n".join(f"  - {f}" for f in commit.files)
+
             user_prompt = f"""A potential locking issue was reported:
 
 ISSUE: {finding.get('message', '')}
 
-DIFF:
+COMMIT INFO:
+Commit SHA: {commit.sha}
+Modified files:
+{files_str}
+
+COMMIT DIFF:
 {commit.diff[:2000]}
 
 Task: Verify if this is a real bug or false positive.
 
 1. Use git_show to read the COMPLETE function `{func_name}`
+   Example: git_show(commit="{commit.sha}", path="path/to/file.c")
 2. Find ALL lock operations:
    - Acquisitions: down_write, down_read, mutex_lock, spin_lock
    - Releases: up_write, up_read, mutex_unlock, spin_unlock
@@ -492,18 +519,26 @@ Before reporting UAF, you MUST:
 
 DO NOT assume refcount starts at 1 or 0 - verify the initialization!"""
 
+            files_str = "\n".join(f"  - {f}" for f in commit.files)
+
             user_prompt = f"""A potential use-after-free was reported:
 
 ISSUE: {finding.get('message', '')}
 
 EVIDENCE: {finding.get('evidence', '')}
 
-DIFF:
+COMMIT INFO:
+Commit SHA: {commit.sha}
+Modified files:
+{files_str}
+
+COMMIT DIFF:
 {commit.diff[:2000]}
 
 Task: Verify if this is a real UAF or false positive.
 
 1. Use git_show to read the file containing `{var_name}`
+   Example: git_show(commit="{commit.sha}", path="path/to/file.c")
 2. Find the initialization of reference counter `{ref_counter}`
    - What is the INITIAL value? (often 2, not 1!)
 3. Find ALL places that increment `{ref_counter}`

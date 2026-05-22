@@ -584,6 +584,13 @@ Examples:
 
             # Replace LLM client with tool-enabled version
             git_dir = os.getcwd()
+            # Verify that we're in a git repository
+            if not os.path.exists(os.path.join(git_dir, '.git')):
+                print(f"Warning: Current directory is not a git repository: {git_dir}", file=sys.stderr)
+                print("Tool-based verification may not work correctly.", file=sys.stderr)
+            if args.debug:
+                print(f"[DEBUG] Tool-enabled client git_dir: {git_dir}")
+
             llm = ToolEnabledClient(
                 git_dir=git_dir,
                 host=args.host,
