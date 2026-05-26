@@ -246,7 +246,53 @@ class SuseUpstreamVerifier:
         Returns:
             True if finding likely exists in upstream
         """
-        # Strategy 0: Compare diffs for similarity and completeness
+        # Strategy 0: First check if the specific evidence from this finding exists in upstream
+        # This must be done BEFORE the general overlap check to avoid false positives
+        evidence = finding.get('evidence', '')
+        if evidence:
+            # Extract code snippets from evidence (lines that look like code)
+            evidence_code_lines = []
+            for line in evidence.split('\n'):
+                stripped = line.strip()
+                # Look for actual code lines (not comments or descriptions or ellipsis)
+                if stripped and len(stripped) > 5 and stripped != '...':
+                    # Skip lines that are clearly descriptions
+                    if not any(stripped.lower().startswith(word) for word in
+                              ['the', 'this', 'shows', 'standard', 'pattern', 'caller', 'diff']):
+                        evidence_code_lines.append(stripped)
+
+            # Check if ALL evidence lines appear in upstream diff
+            # For multi-line evidence, ALL lines must match (not just one)
+            # This is critical: if the buggy code doesn't exist in upstream, it's downstream-only
+            if evidence_code_lines:
+                normalized_upstream = ' '.join(upstream_commit.diff.split())
+                matched_lines = []
+                unmatched_lines = []
+
+                for code_line in evidence_code_lines:
+                    # Remove extra whitespace for better matching
+                    normalized_line = ' '.join(code_line.split())
+
+                    if len(normalized_line) > 10 and normalized_line in normalized_upstream:
+                        matched_lines.append(code_line)
+                        if self.debug:
+                            print(f"[DEBUG] Evidence found in upstream: {code_line[:60]}")
+                    else:
+                        unmatched_lines.append(code_line)
+
+                # If ANY evidence line is missing from upstream, it's downstream-only
+                # This handles both single-line and multi-line evidence
+                if unmatched_lines:
+                    if self.verbose or self.debug:
+                        print(f"[SUSE] Evidence not found in upstream - downstream-only bug")
+                        if self.debug:
+                            print(f"[DEBUG] Matched lines: {len(matched_lines)}")
+                            print(f"[DEBUG] Unmatched lines: {len(unmatched_lines)}")
+                            for line in unmatched_lines[:2]:
+                                print(f"[DEBUG]   Missing: {line[:60]}")
+                    return False
+
+        # Strategy 0b: Compare diffs for similarity and completeness
         # Extract added lines from both diffs (lines starting with +)
         downstream_added = set()
         upstream_added = set()
@@ -337,32 +383,7 @@ class SuseUpstreamVerifier:
             # File is modified in upstream, likely the same change
             return True
 
-        # Strategy 2: Check evidence text
-        evidence = finding.get('evidence', '')
-        if evidence:
-            # Extract code snippets from evidence (lines that look like code)
-            code_lines = []
-            for line in evidence.split('\n'):
-                stripped = line.strip()
-                # Look for actual code lines (not comments or descriptions)
-                if stripped and len(stripped) > 5:
-                    # Skip lines that are clearly descriptions
-                    if not any(stripped.lower().startswith(word) for word in
-                              ['the', 'this', 'shows', 'standard', 'pattern', 'caller', 'diff']):
-                        code_lines.append(stripped)
-
-            # Check if any code lines appear in upstream diff (with some flexibility)
-            for code_line in code_lines:
-                # Remove extra whitespace for better matching
-                normalized_line = ' '.join(code_line.split())
-                normalized_diff = ' '.join(upstream_commit.diff.split())
-
-                if len(normalized_line) > 10 and normalized_line in normalized_diff:
-                    if self.debug:
-                        print(f"[DEBUG] Found matching code in upstream: {code_line[:50]}")
-                    return True
-
-        # Strategy 3: Check for similar changes in the same files
+        # Strategy 2: Check for key patterns in the same files
         # Extract changed lines from finding type/message
         finding_type = finding.get('type', '').lower()
         message = finding.get('message', '').lower()
@@ -387,7 +408,7 @@ class SuseUpstreamVerifier:
                     print(f"[DEBUG] Found key pattern in upstream: {pattern}")
                 return True
 
-        # Strategy 4: Semantic Verification using LLM
+        # Strategy 3: Semantic Verification using LLM
         if self.llm:
             if self.debug:
                 print(f"[DEBUG] Falling back to semantic verification for {finding.get('type')}")
