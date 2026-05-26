@@ -1,19 +1,30 @@
 """Load and adapt review prompts for code-only analysis."""
 
 import os
-from typing import List
+from typing import List, Optional, Dict
+
+from .prompt_set_mapper import PromptSetMapper
 
 
 class PromptLoader:
     """Load and manage review protocol prompts."""
 
-    def __init__(self, prompts_dir: str = None):
+    def __init__(
+        self,
+        prompts_dir: str = None,
+        prompt_set: str = 'default',
+        model_name: Optional[str] = None,
+        config_overrides: Optional[Dict[str, str]] = None
+    ):
         """
-        Initialize prompt loader.
+        Initialize prompt loader with prompt-set support.
 
         Args:
-            prompts_dir: Directory containing prompt markdown files.
+            prompts_dir: Base prompts directory containing prompt sets.
                         If None, uses prompts/ relative to installation directory.
+            prompt_set: Explicit prompt set name or 'auto' for auto-detection
+            model_name: Model name for auto-detection (if prompt_set='auto')
+            config_overrides: Custom model→set mappings from config file
         """
         if prompts_dir is None:
             # Get the directory where this module is located
@@ -23,7 +34,73 @@ class PromptLoader:
             # Prompts are in install_dir/prompts
             prompts_dir = os.path.join(install_dir, "prompts")
 
-        self.prompts_dir = os.path.abspath(prompts_dir)
+        self.base_dir = os.path.abspath(prompts_dir)
+
+        # Determine which prompt set to use
+        mapper = PromptSetMapper(self.base_dir)
+        resolved_set = mapper.select_prompt_set(
+            model_name or 'unknown',
+            explicit_set=prompt_set,
+            config_overrides=config_overrides
+        )
+
+        # Store prompt set name and resolve to directory
+        self.prompt_set = resolved_set
+        self.prompts_dir = self._resolve_prompt_set_dir(resolved_set)
+
+        # Load metadata for this prompt set
+        self.metadata = mapper.metadata.get('sets', {}).get(resolved_set, {})
+
+    def _resolve_prompt_set_dir(self, prompt_set: str) -> str:
+        """
+        Resolve prompt set name to actual directory path.
+
+        Supports both new structure (prompts/<set>/) and legacy structure (prompts/).
+
+        Args:
+            prompt_set: Prompt set name (e.g., 'default', 'small')
+
+        Returns:
+            Absolute path to the prompt set directory
+
+        Raises:
+            RuntimeError: If prompt set directory not found
+        """
+        # New structure: prompts/<set>/
+        set_dir = os.path.join(self.base_dir, prompt_set)
+        if os.path.isdir(set_dir) and os.path.isfile(os.path.join(set_dir, 'review-core.md')):
+            return set_dir
+
+        # Legacy structure: prompts/ (flat directory)
+        # If review-core.md exists at base level, treat base as the prompt set
+        if os.path.isfile(os.path.join(self.base_dir, 'review-core.md')):
+            if prompt_set != 'default':
+                print(f"Warning: Prompt set '{prompt_set}' not found, using legacy flat structure")
+            return self.base_dir
+
+        raise RuntimeError(
+            f"Prompt set '{prompt_set}' not found. "
+            f"Expected directory: {set_dir} with review-core.md"
+        )
+
+    def get_available_subsystems(self) -> List[str]:
+        """
+        Get list of available subsystem guides for current prompt set.
+
+        Returns:
+            List of subsystem filenames (e.g., ['rcu.md', 'locking.md'])
+        """
+        subsys_dir = os.path.join(self.prompts_dir, 'subsystem')
+        if not os.path.isdir(subsys_dir):
+            return []
+
+        try:
+            return sorted([
+                f for f in os.listdir(subsys_dir)
+                if f.endswith('.md') and os.path.isfile(os.path.join(subsys_dir, f))
+            ])
+        except OSError:
+            return []
 
     def load_file(self, filename: str) -> str:
         """Load a prompt file."""

@@ -1,20 +1,28 @@
 """Match code changes to subsystem guides."""
 
 import re
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Set
 
 
 class SubsystemMatcher:
     """Match diff content to applicable subsystem guides."""
 
-    def __init__(self, prompts_dir: str = "prompts"):
+    def __init__(self, prompts_dir: str = "prompts", prompt_loader: Optional['PromptLoader'] = None):
         """
         Initialize subsystem matcher.
 
         Args:
             prompts_dir: Directory containing prompt files
+            prompt_loader: PromptLoader instance for getting available subsystems
         """
         self.prompts_dir = prompts_dir
+        self.prompt_loader = prompt_loader
+
+        # Get available subsystems from prompt loader if provided
+        self.available_subsystems: Optional[Set[str]] = None
+        if prompt_loader:
+            self.available_subsystems = set(prompt_loader.get_available_subsystems())
+
         self.triggers = self._load_triggers()
 
     def _load_triggers(self) -> List[Tuple[str, List[str], str]]:
@@ -68,16 +76,22 @@ class SubsystemMatcher:
         """
         Match diff against subsystem triggers.
 
+        Only returns subsystems that are available in the current prompt set.
+
         Args:
             files: List of changed file paths
             diff_content: Full diff content
 
         Returns:
-            List of subsystem guide filenames to load
+            List of subsystem guide filenames to load (filtered by availability)
         """
         matched_guides = set()
 
         for subsystem_name, triggers, guide_file in self.triggers:
+            # Skip if subsystem not available in current prompt set
+            if self.available_subsystems is not None and guide_file not in self.available_subsystems:
+                continue
+
             if self._matches_triggers(triggers, files, diff_content):
                 matched_guides.add(guide_file)
 

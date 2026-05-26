@@ -72,8 +72,52 @@ import config
 from git_integration import CommitExtractor, MultiRepoExtractor
 from llm_integration import create_llm_client, get_provider_from_args, ToolEnabledClient
 from prompt_management import PromptLoader, SubsystemMatcher
+from prompt_management.prompt_set_mapper import PromptSetMapper
 from analysis import ReviewWorkflow, HybridReviewWorkflow
 from output import ReportFormatter, MetadataGenerator
+
+
+def list_prompt_sets(prompts_dir: str):
+    """
+    List available prompt sets and exit.
+
+    Args:
+        prompts_dir: Directory containing prompt sets
+    """
+    print("Available prompt sets:\n")
+
+    try:
+        mapper = PromptSetMapper(prompts_dir)
+        available_sets = mapper.list_available_sets()
+
+        if not available_sets:
+            print("  No prompt sets found.")
+            return
+
+        # Sort by name for consistent display
+        for set_name in sorted(available_sets.keys()):
+            set_info = available_sets[set_name]
+            name = set_info.get('name', set_name)
+            description = set_info.get('description', 'N/A')
+            estimated_tokens = set_info.get('estimated_tokens', 'Unknown')
+
+            print(f"  {set_name}:")
+            print(f"    Name: {name}")
+            print(f"    Description: {description}")
+            print(f"    Estimated tokens: {estimated_tokens}")
+            print()
+
+        # Show model mappings
+        print("\nDefault model mappings:")
+        model_mappings = mapper.get_model_mappings()
+        if model_mappings:
+            for model, prompt_set in sorted(model_mappings.items()):
+                print(f"  {model} → {prompt_set}")
+        else:
+            print("  (none configured)")
+
+    except Exception as e:
+        print(f"Error listing prompt sets: {e}", file=sys.stderr)
 
 
 def main():
@@ -277,6 +321,19 @@ Examples:
     )
 
     parser.add_argument(
+        "--prompt-set",
+        default=config.DEFAULT_PROMPT_SET,
+        help="Prompt set to use: 'auto' (map from model), 'default' (full), "
+             "'small' (simplified), or custom set name (default: auto)"
+    )
+
+    parser.add_argument(
+        "--list-prompt-sets",
+        action="store_true",
+        help="List available prompt sets and exit"
+    )
+
+    parser.add_argument(
         "--suse-kernel-source",
         help="Path to SUSE kernel-source git repository (enables SUSE upstream verification)"
     )
@@ -371,6 +428,11 @@ Examples:
         except IOError as e:
             print(f"Error: Failed to read list file {args.list}: {e}", file=sys.stderr)
             return 1
+
+    # Handle --list-prompt-sets: show available prompt sets and exit
+    if args.list_prompt_sets:
+        list_prompt_sets(args.prompts_dir)
+        return 0
 
     # Check if we have commits to process (unless in reverify mode)
     if not args.commit and not args.reverify:
@@ -487,14 +549,34 @@ Examples:
         print(f"Tip: Use --prompts-dir option to specify the prompts directory", file=sys.stderr)
         return 1
 
+    # Load configuration for custom model mappings
+    _config = config.load_configuration()
+    config_overrides = _config.get('CUSTOM_MODEL_TO_PROMPT_SET', {})
+
+    # Initialize PromptLoader with prompt-set support
     try:
-        prompts = PromptLoader(prompts_dir=args.prompts_dir)
+        prompts = PromptLoader(
+            prompts_dir=args.prompts_dir,
+            prompt_set=args.prompt_set,
+            model_name=args.model,
+            config_overrides=config_overrides
+        )
+
+        if args.verbose:
+            print(f"Using prompt set: {prompts.prompt_set}")
+            if prompts.metadata:
+                desc = prompts.metadata.get('description', 'N/A')
+                tokens = prompts.metadata.get('estimated_tokens', 'N/A')
+                print(f"  Description: {desc}")
+                print(f"  Estimated tokens: {tokens}")
+
     except Exception as e:
         print(f"Error: Failed to initialize prompt loader", file=sys.stderr)
         print(f"Details: {e}", file=sys.stderr)
         return 1
 
-    matcher = SubsystemMatcher()
+    # Initialize SubsystemMatcher with prompt loader for subsystem filtering
+    matcher = SubsystemMatcher(prompts_dir=args.prompts_dir, prompt_loader=prompts)
 
     # Initialize kernel-source extractor for commit message enhancement
     kernel_source_extractor = None

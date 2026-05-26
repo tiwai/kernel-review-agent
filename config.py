@@ -90,6 +90,10 @@ def load_configuration():
         'DEFAULT_API_KEY': 'dummy',
         'DEFAULT_MODEL': 'gpt-4',
 
+        # Prompt set configuration
+        'DEFAULT_PROMPT_SET': 'auto',  # 'auto', 'default', 'small', or custom name
+        'PROMPT_SET_MAPPING_FILE': 'prompt-sets.json',
+
         # LLM parameters
         'DEFAULT_MAX_TOKENS': 16000,
 
@@ -166,6 +170,8 @@ DEFAULT_HOST = _config['DEFAULT_HOST']
 DEFAULT_PORT = _config['DEFAULT_PORT']
 DEFAULT_API_KEY = _config['DEFAULT_API_KEY']
 DEFAULT_MODEL = _config['DEFAULT_MODEL']
+DEFAULT_PROMPT_SET = _config['DEFAULT_PROMPT_SET']
+PROMPT_SET_MAPPING_FILE = _config['PROMPT_SET_MAPPING_FILE']
 DEFAULT_MAX_TOKENS = _config['DEFAULT_MAX_TOKENS']
 CATEGORIZE_MAX_TOKENS = _config['CATEGORIZE_MAX_TOKENS']
 ANALYZE_MAX_TOKENS = _config['ANALYZE_MAX_TOKENS']
