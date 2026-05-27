@@ -294,10 +294,17 @@ Examples:
              "PATH can be a file or directory containing pre-verification JSON files."
     )
 
-    parser.add_argument(
+    fix_group = parser.add_mutually_exclusive_group()
+    fix_group.add_argument(
         "--propose-fixes",
         action="store_true",
+        default=None,
         help="Ask the LLM to propose fix patches for each identified issue (written to review-fix-patches.diff)"
+    )
+    fix_group.add_argument(
+        "--no-propose-fixes",
+        action="store_true",
+        help="Disable fix patch proposals (overrides config default)"
     )
 
     parser.add_argument(
@@ -389,6 +396,12 @@ Examples:
     # Handle --disable-tools flag (overrides default)
     if args.disable_tools:
         args.enable_tools = False
+
+    # Handle propose-fixes with config default
+    if args.no_propose_fixes:
+        args.propose_fixes = False
+    elif args.propose_fixes is None:
+        args.propose_fixes = config.PROPOSE_FIXES
 
     # Handle --list flag: read commit IDs from file
     if args.list:
