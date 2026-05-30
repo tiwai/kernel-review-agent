@@ -528,6 +528,26 @@ Examples:
     if args.debug:
         print(f"[DEBUG]   Provider: {provider}")
 
+    # Determine host reset configuration (used for both initial and tool-enabled clients)
+    enable_reset = (args.enable_host_reset if hasattr(args, 'enable_host_reset')
+                    else config.ENABLE_HOST_RESET)
+
+    fallback_model = None
+    max_attempts = 2
+    factory_kwargs = {}
+
+    if enable_reset:
+        # Determine fallback model (CLI > config > provider default)
+        if hasattr(args, 'host_reset_model') and args.host_reset_model:
+            fallback_model = args.host_reset_model
+        elif config.HOST_RESET_FALLBACK_MODEL:
+            fallback_model = config.HOST_RESET_FALLBACK_MODEL
+
+        # Get max attempts
+        max_attempts = (args.host_reset_max_attempts
+                       if hasattr(args, 'host_reset_max_attempts')
+                       else config.HOST_RESET_MAX_ATTEMPTS)
+
     # Initialize components
     try:
         # Prepare provider-specific kwargs
@@ -571,24 +591,8 @@ Examples:
         llm = create_llm_client(provider=provider, **provider_kwargs)
 
         # Wrap with resilient client if host reset enabled
-        enable_reset = (args.enable_host_reset if hasattr(args, 'enable_host_reset')
-                        else config.ENABLE_HOST_RESET)
-
         if enable_reset:
             from llm_integration.resilient_client import ResilientLLMClient
-
-            # Determine fallback model (CLI > config > provider default)
-            fallback_model = None
-            if hasattr(args, 'host_reset_model') and args.host_reset_model:
-                fallback_model = args.host_reset_model
-            elif config.HOST_RESET_FALLBACK_MODEL:
-                fallback_model = config.HOST_RESET_FALLBACK_MODEL
-            # else None will use provider default in ResilientLLMClient
-
-            # Get max attempts
-            max_attempts = (args.host_reset_max_attempts
-                           if hasattr(args, 'host_reset_max_attempts')
-                           else config.HOST_RESET_MAX_ATTEMPTS)
 
             # Prepare factory kwargs for client recreation during reset
             factory_kwargs = provider_kwargs.copy()
@@ -754,6 +758,21 @@ Examples:
                 dump_dir=args.dump_dir,
                 reasoning_effort=args.reasoning_effort or None
             )
+
+            # Wrap ToolEnabledClient with resilient client if host reset enabled
+            if enable_reset:
+                from llm_integration.resilient_client import ResilientLLMClient
+
+                llm = ResilientLLMClient(
+                    wrapped_client=llm,
+                    enable_reset=True,
+                    fallback_model=fallback_model,
+                    max_reset_attempts=max_attempts,
+                    **factory_kwargs
+                )
+
+                if args.verbose:
+                    print(f"Tool-enabled client wrapped with host reset")
 
             workflow = HybridReviewWorkflow(
                 llm,
