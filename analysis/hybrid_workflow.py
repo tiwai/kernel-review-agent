@@ -44,18 +44,16 @@ class HybridReviewWorkflow(ReviewWorkflow):
         )
 
         # Check if client is ToolEnabledClient or wraps one (e.g., ResilientLLMClient)
-        actual_client = llm_client
-        if hasattr(llm_client, 'client'):
+        # First check if it's already a ToolEnabledClient
+        if isinstance(llm_client, ToolEnabledClient):
+            actual_client = llm_client
+        # Otherwise, try to unwrap it (e.g., ResilientLLMClient wrapping ToolEnabledClient)
+        elif hasattr(llm_client, 'client'):
             actual_client = llm_client.client
+        else:
+            actual_client = llm_client
 
         if not isinstance(actual_client, ToolEnabledClient):
-            # Debug info to help diagnose the issue
-            import sys
-            print(f"[DEBUG] llm_client type: {type(llm_client)}", file=sys.stderr)
-            print(f"[DEBUG] llm_client has 'client' attr: {hasattr(llm_client, 'client')}", file=sys.stderr)
-            if hasattr(llm_client, 'client'):
-                print(f"[DEBUG] actual_client type: {type(actual_client)}", file=sys.stderr)
-                print(f"[DEBUG] ToolEnabledClient type: {ToolEnabledClient}", file=sys.stderr)
             raise TypeError("HybridReviewWorkflow requires ToolEnabledClient")
 
     def execute_review(self, commit: Commit) -> ReviewResult:
