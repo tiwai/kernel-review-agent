@@ -43,7 +43,12 @@ class HybridReviewWorkflow(ReviewWorkflow):
             debug=kwargs.get('debug', False)
         )
 
-        if not isinstance(llm_client, ToolEnabledClient):
+        # Check if client is ToolEnabledClient or wraps one (e.g., ResilientLLMClient)
+        actual_client = llm_client
+        if hasattr(llm_client, 'client'):
+            actual_client = llm_client.client
+
+        if not isinstance(actual_client, ToolEnabledClient):
             raise TypeError("HybridReviewWorkflow requires ToolEnabledClient")
 
     def execute_review(self, commit: Commit) -> ReviewResult:
