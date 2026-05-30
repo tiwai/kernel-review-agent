@@ -126,6 +126,11 @@ def load_configuration():
         # Output timestamps: prefix each line with HH:MM:SS
         'TIMESTAMPS': False,
 
+        # Host reset configuration (LLM server recovery)
+        'ENABLE_HOST_RESET': False,          # Enable auto-reset on fatal errors
+        'HOST_RESET_FALLBACK_MODEL': None,   # Fallback model (None = use provider default)
+        'HOST_RESET_MAX_ATTEMPTS': 2,        # Max reset attempts per operation
+
         # Output defaults
         'DEFAULT_OUTPUT_DIR': '.',
 
@@ -193,3 +198,6 @@ REEVALUATION_TIME_THRESHOLD = _config['REEVALUATION_TIME_THRESHOLD']
 MAX_TOOL_ITERATIONS = _config['MAX_TOOL_ITERATIONS']
 PROPOSE_FIXES = _config['PROPOSE_FIXES']
 TIMESTAMPS = _config['TIMESTAMPS']
+ENABLE_HOST_RESET = _config['ENABLE_HOST_RESET']
+HOST_RESET_FALLBACK_MODEL = _config['HOST_RESET_FALLBACK_MODEL']
+HOST_RESET_MAX_ATTEMPTS = _config['HOST_RESET_MAX_ATTEMPTS']

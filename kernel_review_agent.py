@@ -281,6 +281,25 @@ Examples:
         help=f"Directory for prompt/response dumps (default: {config.DEBUG_DUMP_DIR})"
     )
 
+    # Host reset options
+    parser.add_argument(
+        "--enable-host-reset",
+        action="store_true",
+        help="Enable automatic LLM host reset on fatal connection errors"
+    )
+
+    parser.add_argument(
+        "--host-reset-model",
+        help="Fallback model for host reset test query (default: provider-specific)"
+    )
+
+    parser.add_argument(
+        "--host-reset-max-attempts",
+        type=int,
+        default=2,
+        help="Maximum host reset attempts per operation (default: 2)"
+    )
+
     parser.add_argument(
         "--skip-verification",
         action="store_true",
@@ -550,6 +569,43 @@ Examples:
                 provider_kwargs['location'] = args.google_location
 
         llm = create_llm_client(provider=provider, **provider_kwargs)
+
+        # Wrap with resilient client if host reset enabled
+        enable_reset = (args.enable_host_reset if hasattr(args, 'enable_host_reset')
+                        else config.ENABLE_HOST_RESET)
+
+        if enable_reset:
+            from llm_integration.resilient_client import ResilientLLMClient
+
+            # Determine fallback model (CLI > config > provider default)
+            fallback_model = None
+            if hasattr(args, 'host_reset_model') and args.host_reset_model:
+                fallback_model = args.host_reset_model
+            elif config.HOST_RESET_FALLBACK_MODEL:
+                fallback_model = config.HOST_RESET_FALLBACK_MODEL
+            # else None will use provider default in ResilientLLMClient
+
+            # Get max attempts
+            max_attempts = (args.host_reset_max_attempts
+                           if hasattr(args, 'host_reset_max_attempts')
+                           else config.HOST_RESET_MAX_ATTEMPTS)
+
+            # Prepare factory kwargs for client recreation during reset
+            factory_kwargs = provider_kwargs.copy()
+            factory_kwargs['provider'] = provider
+
+            # Wrap the client
+            llm = ResilientLLMClient(
+                wrapped_client=llm,
+                enable_reset=True,
+                fallback_model=fallback_model,
+                max_reset_attempts=max_attempts,
+                **factory_kwargs
+            )
+
+            if args.verbose:
+                fb_display = fallback_model if fallback_model else f"{provider} default"
+                print(f"Host reset enabled (fallback: {fb_display}, max attempts: {max_attempts})")
 
     except Exception as e:
         print(f"Error: Failed to initialize {provider} LLM client", file=sys.stderr)
@@ -1171,8 +1227,15 @@ Examples:
                 print(f"✗ Error processing commit {commit_ref}:", file=sys.stderr)
                 print(f"  {error_msg}", file=sys.stderr)
 
+                # Suggest host reset if fatal error and not already enabled
+                from llm_integration.error_detector import is_fatal_host_error
+                if (is_fatal_host_error(e) and
+                    not getattr(args, 'enable_host_reset', False) and
+                    not config.ENABLE_HOST_RESET):
+                    print(f"  Suggestion: This appears to be a host connectivity issue.", file=sys.stderr)
+                    print(f"              Try --enable-host-reset to automatically recover.", file=sys.stderr)
                 # For timeout errors, suggest solutions
-                if "timed out" in error_msg.lower():
+                elif "timed out" in error_msg.lower():
                     print(f"  Suggestion: Increase LLM_TIMEOUT in config.py (current: {config.LLM_TIMEOUT}s)", file=sys.stderr)
                 elif "connect" in error_msg.lower():
                     print(f"  Suggestion: Ensure LLM server is running at {args.host}:{args.port}", file=sys.stderr)
