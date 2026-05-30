@@ -35,7 +35,7 @@ class ResilientLLMClient(LLMClient):
         wrapped_client: LLMClient,
         enable_reset: bool = True,
         fallback_model: Optional[str] = None,
-        max_reset_attempts: int = 2,
+        max_reset_attempts: int = 0,
         provider: str = 'openai',
         verbose: bool = False,
         debug: bool = False,
@@ -48,7 +48,7 @@ class ResilientLLMClient(LLMClient):
             wrapped_client: The actual LLM client to wrap
             enable_reset: Enable automatic reset on fatal errors
             fallback_model: Model to use for reset test query (None = use provider default)
-            max_reset_attempts: Maximum reset attempts per operation
+            max_reset_attempts: Maximum reset attempts per operation (0 = unlimited)
             provider: Provider name (for selecting default fallback model)
             verbose: Enable verbose output
             debug: Enable debug output
@@ -150,8 +150,10 @@ class ResilientLLMClient(LLMClient):
             return operation()
 
         last_error = None
+        reset_attempt = 0
 
-        for reset_attempt in range(self.max_reset_attempts):
+        # Loop until success or max attempts reached (0 = unlimited)
+        while True:
             try:
                 result = operation()
 
@@ -170,10 +172,11 @@ class ResilientLLMClient(LLMClient):
                     # Not a fatal error, propagate immediately
                     raise
 
-                # Fatal error detected - attempt reset if we have attempts left
-                if reset_attempt < self.max_reset_attempts - 1:
-                    self._perform_host_reset(attempt=reset_attempt + 1)
-                else:
+                # Fatal error detected - check if we should continue trying
+                reset_attempt += 1
+
+                # Check if we've exhausted attempts (0 = unlimited)
+                if self.max_reset_attempts > 0 and reset_attempt >= self.max_reset_attempts:
                     # Out of reset attempts
                     if self.verbose or self.debug:
                         print(
@@ -183,8 +186,8 @@ class ResilientLLMClient(LLMClient):
                         )
                     raise
 
-        # Should not reach here, but raise last error if we do
-        raise last_error
+                # Perform reset and continue loop
+                self._perform_host_reset(attempt=reset_attempt)
 
     def _perform_host_reset(self, attempt: int):
         """
@@ -193,11 +196,18 @@ class ResilientLLMClient(LLMClient):
         Args:
             attempt: Current reset attempt number (1-indexed)
         """
-        print(
-            f"[HOST RESET] Detected fatal error, attempting reset "
-            f"(attempt {attempt}/{self.max_reset_attempts})...",
-            file=sys.stderr
-        )
+        if self.max_reset_attempts > 0:
+            print(
+                f"[HOST RESET] Detected fatal error, attempting reset "
+                f"(attempt {attempt}/{self.max_reset_attempts})...",
+                file=sys.stderr
+            )
+        else:
+            print(
+                f"[HOST RESET] Detected fatal error, attempting reset "
+                f"(attempt {attempt})...",
+                file=sys.stderr
+            )
 
         try:
             # Import here to avoid circular dependency

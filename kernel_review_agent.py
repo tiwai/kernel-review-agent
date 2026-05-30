@@ -296,8 +296,8 @@ Examples:
     parser.add_argument(
         "--host-reset-max-attempts",
         type=int,
-        default=2,
-        help="Maximum host reset attempts per operation (default: 2)"
+        default=0,
+        help="Maximum host reset attempts per operation (0 = unlimited, default: 0)"
     )
 
     parser.add_argument(
@@ -533,7 +533,7 @@ Examples:
                     else config.ENABLE_HOST_RESET)
 
     fallback_model = None
-    max_attempts = 2
+    max_attempts = 0  # 0 = unlimited
     factory_kwargs = {}
 
     if enable_reset:

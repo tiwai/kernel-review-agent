@@ -186,6 +186,7 @@ class TestResilientClient(unittest.TestCase):
         mock_client.errors = [
             RuntimeError("proxy error"),
             RuntimeError("proxy error"),
+            RuntimeError("proxy error"),
             RuntimeError("proxy error")
         ]
 
@@ -197,19 +198,19 @@ class TestResilientClient(unittest.TestCase):
             resilient = ResilientLLMClient(
                 wrapped_client=mock_client,
                 enable_reset=True,
-                max_reset_attempts=2,
+                max_reset_attempts=3,  # Limit to 3 attempts
                 provider='openai'
             )
 
             with self.assertRaises(RuntimeError) as ctx:
                 resilient.analyze_code("system", "user")
 
-            # Error should be raised after 2 attempts
+            # Error should be raised after 3 attempts
             self.assertIn("proxy error", str(ctx.exception))
-            # Original client called twice (initial + 1 retry after reset)
-            self.assertEqual(mock_client.call_count, 2)
-            # Temp client created once for the one reset before giving up
-            self.assertEqual(mock_factory.call_count, 1)
+            # Original client called 3 times
+            self.assertEqual(mock_client.call_count, 3)
+            # Temp client created 2 times (resets between the 3 attempts)
+            self.assertEqual(mock_factory.call_count, 2)
 
     def test_fallback_model_selection_openai(self):
         """Test correct default fallback model for OpenAI."""
@@ -310,6 +311,34 @@ class TestResilientClient(unittest.TestCase):
 
         self.assertEqual(result, "Context response")
         self.assertEqual(mock_client.call_count, 1)
+
+    def test_unlimited_attempts(self):
+        """Test that unlimited attempts (0) keeps retrying until success."""
+        mock_client = MockLLMClient()
+        # Fail 10 times, then succeed
+        mock_client.errors = [RuntimeError("proxy error")] * 10 + [None]
+        mock_client.responses = [None] * 10 + ["Success after many resets"]
+
+        with patch('llm_integration.client_factory.create_llm_client') as mock_factory:
+            temp_client = MockLLMClient(model='gpt-3.5-turbo')
+            temp_client.responses = ["OK"]
+            mock_factory.return_value = temp_client
+
+            resilient = ResilientLLMClient(
+                wrapped_client=mock_client,
+                enable_reset=True,
+                max_reset_attempts=0,  # Unlimited
+                provider='openai'
+            )
+
+            result = resilient.analyze_code("system", "user")
+
+            # Should eventually succeed
+            self.assertEqual(result, "Success after many resets")
+            # Original client called 11 times (10 fails + 1 success)
+            self.assertEqual(mock_client.call_count, 11)
+            # Temp client created 10 times for resets
+            self.assertEqual(mock_factory.call_count, 10)
 
 
 if __name__ == '__main__':

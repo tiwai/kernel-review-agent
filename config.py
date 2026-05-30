@@ -129,7 +129,7 @@ def load_configuration():
         # Host reset configuration (LLM server recovery)
         'ENABLE_HOST_RESET': False,          # Enable auto-reset on fatal errors
         'HOST_RESET_FALLBACK_MODEL': None,   # Fallback model (None = use provider default)
-        'HOST_RESET_MAX_ATTEMPTS': 2,        # Max reset attempts per operation
+        'HOST_RESET_MAX_ATTEMPTS': 0,        # Max reset attempts per operation (0 = unlimited)
 
         # Output defaults
         'DEFAULT_OUTPUT_DIR': '.',

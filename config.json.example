@@ -24,10 +24,10 @@
   "LLM_TIMEOUT": 300,
   "CONNECT_TIMEOUT": 10,
 
-  "_comment_host_reset": "Host reset: auto-recover from fatal LLM connection errors",
+  "_comment_host_reset": "Host reset: auto-recover from fatal LLM connection errors (0 = unlimited retries)",
   "ENABLE_HOST_RESET": false,
   "HOST_RESET_FALLBACK_MODEL": null,
-  "HOST_RESET_MAX_ATTEMPTS": 2,
+  "HOST_RESET_MAX_ATTEMPTS": 0,
 
   "DEFAULT_OUTPUT_DIR": ".",
   "DEBUG_DUMP_DIR": "debug_dumps",
