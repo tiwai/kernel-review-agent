@@ -194,10 +194,15 @@ evidence using git tools, it is a hallucination. Discard it."""
         # Format file list for the prompt
         files_str = "\n".join(f"  - {f}" for f in commit.files)
 
+        # Normalize evidence to handle both string and list types
+        evidence = finding.get('evidence', '')
+        if isinstance(evidence, list):
+            evidence = '\n'.join(str(item) for item in evidence)
+
         user_prompt = f"""FINDING TO VERIFY:
 Type: {finding.get('type')}
 Message: {finding.get('message')}
-Evidence: {finding.get('evidence')}
+Evidence: {evidence}
 
 COMMIT INFO:
 Commit SHA: {commit.sha}
@@ -369,7 +374,11 @@ Be concise."""
             func_match = re.search(r'(?:in function|function) [`\']?(\w+)[`\']?', finding.get('message', ''))
             if not func_match:
                 # Try to extract from evidence
-                func_match = re.search(r'(\w+)\s*\(', finding.get('evidence', ''))
+                evidence = finding.get('evidence', '')
+                # Handle both string and list types for evidence (LLM might return either)
+                if isinstance(evidence, list):
+                    evidence = '\n'.join(str(item) for item in evidence)
+                func_match = re.search(r'(\w+)\s*\(', evidence)
 
             if not func_match:
                 # Can't verify without function name - keep original finding
@@ -490,9 +499,14 @@ Be concise but include the lock trace."""
         for finding in uaf_related:
             # Extract relevant variable/struct name
             # Look for patterns like "wq", "obj", "ptr", etc.
-            var_match = re.search(r'\b([a-z_]+)(?:->|\.|\.)', finding.get('evidence', ''))
+            evidence = finding.get('evidence', '')
+            # Handle both string and list types for evidence (LLM might return either)
+            if isinstance(evidence, list):
+                evidence = '\n'.join(str(item) for item in evidence)
+
+            var_match = re.search(r'\b([a-z_]+)(?:->|\.|\.)', evidence)
             if not var_match:
-                var_match = re.search(r'(?:free|kfree|put_)\(([a-z_][a-z0-9_]*)\)', finding.get('evidence', ''))
+                var_match = re.search(r'(?:free|kfree|put_)\(([a-z_][a-z0-9_]*)\)', evidence)
 
             if not var_match:
                 # Can't extract variable - keep finding
@@ -505,7 +519,7 @@ Be concise but include the lock trace."""
             ref_patterns = ['wait_ctr', 'refcnt', 'ref_count', 'kref', 'count', 'users']
             ref_counter = None
             for pattern in ref_patterns:
-                if pattern in commit.diff or pattern in finding.get('evidence', ''):
+                if pattern in commit.diff or pattern in evidence:
                     ref_counter = pattern
                     break
 
@@ -535,7 +549,7 @@ DO NOT assume refcount starts at 1 or 0 - verify the initialization!"""
 
 ISSUE: {finding.get('message', '')}
 
-EVIDENCE: {finding.get('evidence', '')}
+EVIDENCE: {evidence}
 
 COMMIT INFO:
 Commit SHA: {commit.sha}

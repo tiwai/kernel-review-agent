@@ -178,6 +178,9 @@ class ReportFormatter:
 
                 # Add evidence if available
                 evidence = finding.get('evidence', '')
+                # Handle both string and list types for evidence (LLM might return either)
+                if isinstance(evidence, list):
+                    evidence = '\n'.join(str(item) for item in evidence)
                 if evidence:
                     # Evidence may contain formatted text (markdown, code blocks)
                     # Preserve formatting but ensure reasonable line lengths

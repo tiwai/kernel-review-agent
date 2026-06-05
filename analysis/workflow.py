@@ -872,10 +872,13 @@ JSON array (empty [] if false positive):"""
 
     def _verify_evidence_physical_existence(self, finding: Dict, context: Dict, commit: Commit) -> bool:
         """
-        Hallucination Pre-Pass: Deterministically verify that cited code/variables 
+        Hallucination Pre-Pass: Deterministically verify that cited code/variables
         actually exist in the context or diff.
         """
         evidence = finding.get('evidence', '')
+        # Handle both string and list types for evidence (LLM might return either)
+        if isinstance(evidence, list):
+            evidence = '\n'.join(str(item) for item in evidence)
         if not evidence:
             return True # No evidence to verify, let the LLM handle it
 

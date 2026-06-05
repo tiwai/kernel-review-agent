@@ -249,6 +249,9 @@ class SuseUpstreamVerifier:
         # Strategy 0: First check if the specific evidence from this finding exists in upstream
         # This must be done BEFORE the general overlap check to avoid false positives
         evidence = finding.get('evidence', '')
+        # Handle both string and list types for evidence (LLM might return either)
+        if isinstance(evidence, list):
+            evidence = '\n'.join(str(item) for item in evidence)
         if evidence:
             # Extract code snippets from evidence (lines that look like code)
             evidence_code_lines = []
@@ -494,13 +497,18 @@ in a SUSE backport is also present in the original upstream commit.
 Backports often have slight context shifts (line numbers, variable renaming, or 
 different surrounding code), but the underlying logic defect might be the same.
 
-Your goal is to determine if the logic defect described in the finding exists 
+Your goal is to determine if the logic defect described in the finding exists
 in the upstream diff."""
+
+        # Normalize evidence to handle both string and list types
+        evidence = finding.get('evidence', '')
+        if isinstance(evidence, list):
+            evidence = '\n'.join(str(item) for item in evidence)
 
         user_prompt = f"""FINDING DESCRIPTION:
 Type: {finding.get('type')}
 Message: {finding.get('message')}
-Evidence: {finding.get('evidence')}
+Evidence: {evidence}
 
 DOWNSTREAM (SUSE) DIFF:
 {downstream_commit.diff[:2000]}
