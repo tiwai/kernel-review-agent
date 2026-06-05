@@ -1,0 +1,2 @@
+Error: Failed to initialize ollama LLM client
+Details: Failed to initialize Ollama client: [Errno 2] No such file or directory

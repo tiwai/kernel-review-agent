@@ -1,0 +1,17 @@
+commit ff4bb95376b30c4e442bbbd004744f018294547c
+Author: Jan Kara <jack@suse.cz>
+
+[PATCH] blk-rq-qos: fix crash on rq_qos_wait vs. rq_qos_wake_function
+
+suse-commit: d3d6332b124639d424fb7cc3dd684d28f79c2f47
+Git-commit: e972b08b91ef48488bae9789f03cfedb148667fb
+
+This commit appears correct with no regressions found.
+
+Review-time: 116.32 seconds
+
+Review-model: qwen3.6:q4
+
+Input-tokens: 17353
+Output-tokens: 6540
+Total-tokens: 23893

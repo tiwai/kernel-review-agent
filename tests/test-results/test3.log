@@ -1,0 +1,44 @@
+Using prompt set: default
+  Description: Complete protocol for large models (>32k context)
+  Estimated tokens: 15000
+Kernel-source commit message enhancement enabled
+Upstream Linux repository available for backport verification
+SUSE upstream verification enabled
+Using hybrid mode: Pre-loaded context + tool calling for enhanced verification
+Processing 1 commit(s)...
+
+  Enhanced commit message from kernel-source patch
+
+=== Phase 0: Backport Verification ===
+  Upstream commit: e972b08b91ef
+  Comparing with upstream: e972b08b91ef
+  Backport differences detected: 1 missing hunk(s), 1 extra hunk(s) → NEEDS DEEP REVIEW
+  → Deep review required - backport differences detected
+
+=== Phase 1: Standard Review (Pre-loaded Context) ===
+
+Reviewing commit ff4bb95376b3...
+Subject: [PATCH] blk-rq-qos: fix crash on rq_qos_wait vs. rq_qos_wake_function
+
+[1/5] Gathering context...
+      Matched subsystems: block.md
+
+[2/5] Categorizing changes...
+      Found 1 change categories
+
+[3/5] Analyzing for regressions...
+      Found 0 potential issues
+
+[4/5] Verifying findings...
+      0 issues after verification
+
+[5/5] Generating summary...
+
+Review complete: 0 issue(s) found
+
+✓ Commit ff4bb95376b3: [PATCH] blk-rq-qos: fix crash on rq_qos_wait vs. rq_qos_wake_function
+  Issues found: 0
+  Severity: none
+  Report: /home/tiwai/tmp/claude-test9/test-results/test3-large-default/ff/ff4bb95376b30c4e442bbbd004744f018294547c/review-inline.txt
+  Metadata: /home/tiwai/tmp/claude-test9/test-results/test3-large-default/ff/ff4bb95376b30c4e442bbbd004744f018294547c/review-metadata.json
+

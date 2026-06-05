@@ -1,0 +1,15 @@
+{
+  "author": "Takashi Iwai <tiwai@suse.de>",
+  "subject": "[PATCH] ALSA: pcm: fix use-after-free on linked stream runtime in snd_pcm_drain()",
+  "issues-found": 0,
+  "issue-severity-score": "none",
+  "issue-severity-explanation": "No issues found",
+  "sha": "e83f70987391ede09f78d6ffd1bb5c15d5de77ff",
+  "review-time-seconds": 7.74,
+  "model": "qwen3.5-9b",
+  "input-tokens": 14880,
+  "output-tokens": 556,
+  "total-tokens": 15436,
+  "suse-commit": "f0ddea5a8cd6b3280ec6850eb550de37938d6244",
+  "upstream-commit": "9b1dbd69ba6f8f8c69bc7b77c2ce3b9c6ed05ba6"
+}

@@ -1,0 +1,15 @@
+{
+  "author": "Jan Kara <jack@suse.cz>",
+  "subject": "[PATCH] blk-rq-qos: fix crash on rq_qos_wait vs. rq_qos_wake_function",
+  "issues-found": 0,
+  "issue-severity-score": "none",
+  "issue-severity-explanation": "No issues found",
+  "sha": "ff4bb95376b30c4e442bbbd004744f018294547c",
+  "review-time-seconds": 11.75,
+  "model": "qwen3",
+  "input-tokens": 21624,
+  "output-tokens": 1092,
+  "total-tokens": 22716,
+  "suse-commit": "d3d6332b124639d424fb7cc3dd684d28f79c2f47",
+  "upstream-commit": "e972b08b91ef48488bae9789f03cfedb148667fb"
+}

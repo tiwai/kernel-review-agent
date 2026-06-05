@@ -1,0 +1,31 @@
+✗ Error processing commit ff4bb95376b3:
+  LLM API call failed after 1 attempts: Error code: 500 - {'error': {'code': 500, 'message': 'model name=qwen3 failed to load', 'type': 'server_error'}}
+
+Using prompt set: default
+  Description: Complete protocol for large models (>32k context)
+  Estimated tokens: 15000
+Kernel-source commit message enhancement enabled
+Upstream Linux repository available for backport verification
+SUSE upstream verification enabled
+Using hybrid mode: Pre-loaded context + tool calling for enhanced verification
+Processing 1 commit(s)...
+
+  Enhanced commit message from kernel-source patch
+
+=== Phase 0: Backport Verification ===
+  Upstream commit: e972b08b91ef
+  Comparing with upstream: e972b08b91ef
+  Backport differences detected: 1 missing hunk(s), 1 extra hunk(s) → NEEDS DEEP REVIEW
+  → Deep review required - backport differences detected
+
+=== Phase 1: Standard Review (Pre-loaded Context) ===
+
+Reviewing commit ff4bb95376b3...
+Subject: [PATCH] blk-rq-qos: fix crash on rq_qos_wait vs. rq_qos_wake_function
+
+[1/5] Gathering context...
+      Matched subsystems: block.md
+
+[2/5] Categorizing changes...
+[ERROR] InternalServerError: Error code: 500 - {'error': {'code': 500, 'message': 'model name=qwen3 failed to load', 'type': 'server_error'}}
+All retry attempts exhausted

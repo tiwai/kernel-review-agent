@@ -1,0 +1,100 @@
+Testing commit: e83f70987391
+commit e83f70987391ede09f78d6ffd1bb5c15d5de77ff
+Author: Takashi Iwai <tiwai@suse.de>
+Date:   Fri May 15 14:38:33 2026 +0200
+
+    ALSA: pcm: fix use-after-free on linked stream runtime in
+    snd_pcm_drain() (CVE-2026-43437 bsc#1265126).
+    
+    suse-commit: f0ddea5a8cd6b3280ec6850eb550de37938d6244
+
+ sound/core/pcm_native.c | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
+
+============================================================
+Quick Test A: qwen3.5-9b with AUTO-SELECTED prompt set (small)
+============================================================
+Using prompt set: small
+  Description: Simplified protocol for smaller models (8k-32k context)
+  Estimated tokens: 5000
+Kernel-source commit message enhancement enabled
+Upstream Linux repository available for backport verification
+SUSE upstream verification enabled
+Using standard mode: Pre-loaded context only (tool calling disabled)
+Processing 1 commit(s)...
+
+  Enhanced commit message from kernel-source patch
+
+Reviewing commit e83f70987391...
+Subject: [PATCH] ALSA: pcm: fix use-after-free on linked stream runtime in snd_pcm_drain()
+
+[1/5] Gathering context...
+
+[2/5] Categorizing changes...
+      Found 1 change categories
+
+[3/5] Analyzing for regressions...
+      Found 0 potential issues
+
+[4/5] Verifying findings...
+      0 issues after verification
+
+[5/5] Generating summary...
+
+Review complete: 0 issue(s) found
+
+✓ Commit e83f70987391: [PATCH] ALSA: pcm: fix use-after-free on linked stream runtime in snd_pcm_drain()
+  Issues found: 0
+  Severity: none
+  Report: /home/tiwai/tmp/claude-test9/test-results/quick-a-small/e8/e83f70987391ede09f78d6ffd1bb5c15d5de77ff/review-inline.txt
+  Metadata: /home/tiwai/tmp/claude-test9/test-results/quick-a-small/e8/e83f70987391ede09f78d6ffd1bb5c15d5de77ff/review-metadata.json
+
+
+============================================================
+Quick Test B: qwen3.5-9b with FORCED default prompt set
+============================================================
+Using prompt set: default
+  Description: Complete protocol for large models (>32k context)
+  Estimated tokens: 15000
+Kernel-source commit message enhancement enabled
+Upstream Linux repository available for backport verification
+SUSE upstream verification enabled
+Using standard mode: Pre-loaded context only (tool calling disabled)
+Processing 1 commit(s)...
+
+  Enhanced commit message from kernel-source patch
+
+Reviewing commit e83f70987391...
+Subject: [PATCH] ALSA: pcm: fix use-after-free on linked stream runtime in snd_pcm_drain()
+
+[1/5] Gathering context...
+
+[2/5] Categorizing changes...
+      Found 1 change categories
+
+[3/5] Analyzing for regressions...
+      Found 0 potential issues
+
+[4/5] Verifying findings...
+      0 issues after verification
+
+[5/5] Generating summary...
+
+Review complete: 0 issue(s) found
+
+✓ Commit e83f70987391: [PATCH] ALSA: pcm: fix use-after-free on linked stream runtime in snd_pcm_drain()
+  Issues found: 0
+  Severity: none
+  Report: /home/tiwai/tmp/claude-test9/test-results/quick-b-default/e8/e83f70987391ede09f78d6ffd1bb5c15d5de77ff/review-inline.txt
+  Metadata: /home/tiwai/tmp/claude-test9/test-results/quick-b-default/e8/e83f70987391ede09f78d6ffd1bb5c15d5de77ff/review-metadata.json
+
+
+============================================================
+Comparison
+============================================================
+Test A (small prompts):   0 findings
+Test B (default prompts): 0 findings
+
+Results in:
+  test-results/quick-a-small/
+  test-results/quick-b-default/
