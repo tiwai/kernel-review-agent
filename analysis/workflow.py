@@ -487,6 +487,47 @@ class ReviewWorkflow:
 
         return result
 
+    def _attempt_json_repair(self, json_str: str) -> Optional[str]:
+        """
+        Attempt to repair common JSON formatting issues from LLM output.
+
+        This handles cases like:
+        - Missing commas between array elements or object properties
+        - Extra commas before closing brackets
+        - Mismatched brackets (simple cases)
+
+        Args:
+            json_str: Potentially malformed JSON string
+
+        Returns:
+            Repaired JSON string, or None if repair failed
+        """
+        if not json_str:
+            return None
+
+        result = json_str
+
+        # Fix 1: Missing comma after closing bracket/brace before opening quote
+        # Pattern: ]  "key" or }  "key" should be ], "key" or }, "key"
+        result = re.sub(r'(\]|\})\s*\n\s*(")', r'\1,\n  \2', result)
+
+        # Fix 2: Missing comma between object elements (closing brace before opening brace)
+        # Pattern: }  { should be }, {
+        result = re.sub(r'(\})\s*\n\s*(\{)', r'\1,\n  \2', result)
+
+        # Fix 3: Missing comma after string value before opening quote
+        # Pattern: "value"  "key" should be "value", "key"
+        result = re.sub(r'("\s*)\n\s*(")', r'\1,\n  \2', result)
+
+        # Fix 4: Remove trailing commas before closing brackets
+        # Pattern: ,  ] or ,  } should be  ] or  }
+        result = re.sub(r',(\s*[\]}])', r'\1', result)
+
+        # Fix 5: Missing comma between array elements (number/bool/null followed by opening brace/bracket)
+        result = re.sub(r'(\d+|true|false|null)\s*\n\s*([{\[])', r'\1,\n  \2', result)
+
+        return result
+
     def _reformat_as_json(self, prose_response: str, schema_example: str, max_tokens: int = 4096) -> Optional[str]:
         """
         Fallback: ask the model to reformat a prose response as a JSON array.
@@ -604,11 +645,11 @@ JSON array:"""
                     except json.JSONDecodeError:
                         pass
         except json.JSONDecodeError as e:
+            # Check if this looks like truncation
+            is_truncated = self._looks_truncated(json_str if 'json_str' in locals() else response)
+
             if self.verbose or self.debug:
                 print(f"[ERROR] Failed to parse categorization JSON: {e}", file=sys.stderr)
-
-                # Check if this looks like truncation
-                is_truncated = self._looks_truncated(json_str if 'json_str' in locals() else response)
 
                 if is_truncated:
                     print(f"[ERROR] Response appears truncated (incomplete JSON)", file=sys.stderr)
@@ -616,6 +657,23 @@ JSON array:"""
                     print(f"[ERROR] Try increasing CATEGORIZE_MAX_TOKENS in config.py (current: {config.CATEGORIZE_MAX_TOKENS})", file=sys.stderr)
                 else:
                     print(f"[ERROR] JSON format issue (not truncation)", file=sys.stderr)
+
+            # Attempt to repair the JSON and try parsing again
+            if not is_truncated and 'json_str' in locals() and json_str:
+                if self.verbose or self.debug:
+                    print(f"[WARNING] Attempting to repair malformed JSON...", file=sys.stderr)
+
+                repaired = self._attempt_json_repair(json_str)
+                if repaired:
+                    try:
+                        categories = json.loads(repaired)
+                        if isinstance(categories, list):
+                            if self.verbose or self.debug:
+                                print(f"[SUCCESS] JSON repair successful, parsed {len(categories)} categories", file=sys.stderr)
+                            return categories
+                    except json.JSONDecodeError as repair_error:
+                        if self.verbose or self.debug:
+                            print(f"[ERROR] JSON repair failed: {repair_error}", file=sys.stderr)
 
         return []
 
@@ -723,6 +781,9 @@ JSON array:"""
                     except json.JSONDecodeError:
                         pass
         except json.JSONDecodeError as e:
+            # Check if this looks like truncation (incomplete JSON)
+            is_truncated = self._looks_truncated(json_str if 'json_str' in locals() else response)
+
             if self.verbose or self.debug:
                 print(f"[ERROR] Failed to parse regression analysis JSON: {e}", file=sys.stderr)
 
@@ -731,9 +792,6 @@ JSON array:"""
                     start = max(0, e.pos - 50)
                     end = min(len(response), e.pos + 50)
                     print(f"[ERROR] Context around error position {e.pos}: ...{response[start:end]}...", file=sys.stderr)
-
-                # Check if this looks like truncation (incomplete JSON)
-                is_truncated = self._looks_truncated(json_str if 'json_str' in locals() else response)
 
                 if is_truncated:
                     print(f"[ERROR] Response appears truncated (incomplete JSON)", file=sys.stderr)
@@ -744,6 +802,23 @@ JSON array:"""
 
                 if self.llm.dump_prompts:
                     print(f"[ERROR] Check dump files in {self.llm.dump_dir}/ for full response", file=sys.stderr)
+
+            # Attempt to repair the JSON and try parsing again
+            if not is_truncated and 'json_str' in locals() and json_str:
+                if self.verbose or self.debug:
+                    print(f"[WARNING] Attempting to repair malformed JSON...", file=sys.stderr)
+
+                repaired = self._attempt_json_repair(json_str)
+                if repaired:
+                    try:
+                        findings = json.loads(repaired)
+                        if isinstance(findings, list):
+                            if self.verbose or self.debug:
+                                print(f"[SUCCESS] JSON repair successful, parsed {len(findings)} findings", file=sys.stderr)
+                            return findings
+                    except json.JSONDecodeError as repair_error:
+                        if self.verbose or self.debug:
+                            print(f"[ERROR] JSON repair failed: {repair_error}", file=sys.stderr)
 
         return []
 
