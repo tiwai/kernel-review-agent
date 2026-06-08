@@ -1,6 +1,9 @@
 # Linux Kernel Patch Analysis Protocol (Condensed)
 
-Deep regression analysis of Linux kernel patches. Focus on changes introduced by the commit.
+Deep regression analysis of Linux kernel patches.
+
+If given a git range, print numbered list of commits (oldest first, asterisk on analyzed commit).
+Analyze only the specified commit, but consider the series when looking for fixes.
 
 ## Analysis Philosophy
 - Assume patch has bugs including in comments and commit message
@@ -43,6 +46,8 @@ Print: CHANGE-N: short description, sample code line
 
 ## Task 2: Analyze for Regressions
 **Reachability gate**: Verify changed code paths are reachable given config dependencies, feature flags, protocol constraints.
+
+**Kconfig check**: If patch modifies Kconfig/defconfig or adds CONFIG_* usage, verify dependencies, select safety, silent disable issues, and symbol existence.
 
 For each change category:
 1. **Control flow bugs**: New paths, edge cases, error handling gaps
