@@ -313,6 +313,15 @@ Examples:
              "PATH can be a file or directory containing pre-verification JSON files."
     )
 
+    parser.add_argument(
+        "--stop-after",
+        choices=["categorize", "analyze", "verify"],
+        help="Stop workflow after the specified stage (for dataset generation). "
+             "categorize = stop after Task 1 (change categorization), "
+             "analyze = stop after Task 2 (regression analysis), "
+             "verify = stop after Task 3 (verification, equivalent to full run)"
+    )
+
     fix_group = parser.add_mutually_exclusive_group()
     fix_group.add_argument(
         "--propose-fixes",
@@ -785,7 +794,8 @@ Examples:
                 enable_tools=True,
                 upstream_repo=upstream_repo_extractor,
                 propose_fixes=args.propose_fixes,
-                max_tool_iterations=args.max_tool_iterations
+                max_tool_iterations=args.max_tool_iterations,
+                stop_after=args.stop_after
             )
 
     if not args.enable_tools:
@@ -804,7 +814,8 @@ Examples:
             skip_verification=args.skip_verification,
             suse_verifier=suse_verifier,
             propose_fixes=args.propose_fixes,
-            max_tool_iterations=args.max_tool_iterations
+            max_tool_iterations=args.max_tool_iterations,
+            stop_after=args.stop_after
         )
     formatter = ReportFormatter()
     metadata_gen = MetadataGenerator()

@@ -43,7 +43,8 @@ class ReviewWorkflow:
         skip_verification: bool = False,
         suse_verifier: Optional['SuseUpstreamVerifier'] = None,
         propose_fixes: bool = False,
-        max_tool_iterations: int = None
+        max_tool_iterations: int = None,
+        stop_after: Optional[str] = None
     ):
         """
         Initialize review workflow.
@@ -58,6 +59,7 @@ class ReviewWorkflow:
             suse_verifier: SUSE upstream verifier (optional)
             propose_fixes: Generate fix patch proposals for verified findings
             max_tool_iterations: Max tool-call iterations per step (None = use config default)
+            stop_after: Stop workflow after stage ('categorize', 'analyze', 'verify', or None for full)
         """
         self.llm = llm_client
         self.prompts = prompt_loader
@@ -68,6 +70,7 @@ class ReviewWorkflow:
         self.suse_verifier = suse_verifier
         self.propose_fixes = propose_fixes
         self.max_tool_iterations = max_tool_iterations if max_tool_iterations is not None else config.MAX_TOOL_ITERATIONS
+        self.stop_after = stop_after
 
     def reverify_from_json(self, json_path: str) -> ReviewResult:
         """
@@ -231,6 +234,21 @@ class ReviewWorkflow:
             for cat in categories:
                 print(f"[DEBUG]   - {cat.get('id')}: {cat.get('type')} - {cat.get('description', '')[:60]}")
 
+        # Early exit if stop_after == 'categorize'
+        if self.stop_after == 'categorize':
+            if self.verbose:
+                print("\nStopping after categorization (--stop-after categorize)")
+            token_usage = self.llm.get_token_usage()
+            return ReviewResult(
+                findings=[],
+                summary="Stopped after categorization stage",
+                subsystems_loaded=[],
+                input_tokens=token_usage['prompt_tokens'],
+                output_tokens=token_usage['completion_tokens'],
+                categories=categories,
+                code_context_formatted=context.get('code_context_formatted')
+            )
+
         # Task 2: Analyze for regressions (LLM-driven)
         if self.verbose:
             print("\n[3/5] Analyzing for regressions...")
@@ -247,6 +265,22 @@ class ReviewWorkflow:
             print(f"[DEBUG] Findings:")
             for i, finding in enumerate(findings):
                 print(f"[DEBUG]   {i+1}. {finding.get('type')}: {finding.get('message', '')[:60]}...")
+
+        # Early exit if stop_after == 'analyze'
+        if self.stop_after == 'analyze':
+            if self.verbose:
+                print("\nStopping after regression analysis (--stop-after analyze)")
+            token_usage = self.llm.get_token_usage()
+            return ReviewResult(
+                findings=findings,
+                summary="Stopped after regression analysis stage",
+                subsystems_loaded=subsystems,
+                input_tokens=token_usage['prompt_tokens'],
+                output_tokens=token_usage['completion_tokens'],
+                pre_verification_findings=findings,
+                categories=categories,
+                code_context_formatted=context.get('code_context_formatted')
+            )
 
         # Task 2.5: SUSE upstream verification (conditional)
         suse_verification_result = None
