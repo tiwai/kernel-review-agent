@@ -88,6 +88,8 @@ class ResilientLLMClient(LLMClient):
         self,
         system_prompt: str,
         user_content: str,
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None,
         max_tokens: int = config.DEFAULT_MAX_TOKENS,
         temperature: Optional[float] = None
     ) -> str:
@@ -97,6 +99,8 @@ class ResilientLLMClient(LLMClient):
         Args:
             system_prompt: System prompt (instructions, context)
             user_content: User content (diff, code, etc.)
+            stage_name: Stage name for prompt dumping
+            commit_output_dir: Output directory for prompt dumping
             max_tokens: Maximum tokens in response
             temperature: Sampling temperature (None = use model default)
 
@@ -105,7 +109,7 @@ class ResilientLLMClient(LLMClient):
         """
         return self._call_with_reset(
             lambda: self.client.analyze_code(
-                system_prompt, user_content, max_tokens, temperature
+                system_prompt, user_content, stage_name, commit_output_dir, max_tokens, temperature
             )
         )
 

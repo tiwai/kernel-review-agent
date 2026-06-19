@@ -42,6 +42,8 @@ class LLMClient(ABC):
         self,
         system_prompt: str,
         user_content: str,
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None,
         max_tokens: int = config.DEFAULT_MAX_TOKENS,
         temperature: Optional[float] = None
     ) -> str:
@@ -51,6 +53,8 @@ class LLMClient(ABC):
         Args:
             system_prompt: System prompt (instructions, context)
             user_content: User content (diff, code, etc.)
+            stage_name: Stage name for prompt dumping (optional)
+            commit_output_dir: Output directory for prompt dumping (optional)
             max_tokens: Maximum tokens in response
             temperature: Sampling temperature (None = use model default)
 

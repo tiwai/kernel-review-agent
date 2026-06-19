@@ -82,6 +82,8 @@ class AnthropicVertexClient(LLMClient):
         self,
         system_prompt: str,
         user_content: str,
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None,
         max_tokens: int = config.DEFAULT_MAX_TOKENS,
         temperature: Optional[float] = None
     ) -> str:
