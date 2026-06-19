@@ -136,6 +136,39 @@ class ResilientLLMClient(LLMClient):
             )
         )
 
+    def analyze_with_tools(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_iterations: int = 10,
+        max_tokens: int = config.DEFAULT_MAX_TOKENS,
+        temperature: Optional[float] = None
+    ) -> str:
+        """
+        Analyze with tool calling enabled (automatic reset on fatal errors).
+
+        Args:
+            system_prompt: System instructions
+            user_prompt: User query/task
+            max_iterations: Maximum tool calling iterations
+            max_tokens: Maximum tokens per response
+            temperature: Sampling temperature (None = use model default)
+
+        Returns:
+            Final LLM response after all tool calls
+        """
+        # Check if wrapped client supports tool calling
+        if not hasattr(self.client, 'analyze_with_tools'):
+            raise AttributeError(
+                f"Wrapped client ({type(self.client).__name__}) does not support tool calling"
+            )
+
+        return self._call_with_reset(
+            lambda: self.client.analyze_with_tools(
+                system_prompt, user_prompt, max_iterations, max_tokens, temperature
+            )
+        )
+
     def _call_with_reset(self, operation):
         """
         Execute operation with automatic host reset on fatal errors.
