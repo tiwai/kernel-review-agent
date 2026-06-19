@@ -56,10 +56,18 @@ class HybridReviewWorkflow(ReviewWorkflow):
         if not isinstance(actual_client, ToolEnabledClient):
             raise TypeError("HybridReviewWorkflow requires ToolEnabledClient")
 
-    def execute_review(self, commit: Commit) -> ReviewResult:
+    def execute_review(self, commit: Commit, commit_output_dir: Optional[str] = None) -> ReviewResult:
         """
         Execute review with hybrid approach.
 
+        Args:
+            commit: Commit to review
+            commit_output_dir: Output directory for this commit (for prompt dumping)
+
+        Returns:
+            ReviewResult with findings and metadata
+
+        Workflow:
         0. Check backport quality (compare with upstream if available)
         1. Run standard workflow (pre-loaded context)
         2. If findings detected, use tool calling for deep-dive verification
@@ -97,7 +105,7 @@ class HybridReviewWorkflow(ReviewWorkflow):
             # Append backport analysis to commit message for LLM context
             commit.message = commit.message + "\n\n" + backport_info_for_llm
 
-        result = super().execute_review(commit)
+        result = super().execute_review(commit, commit_output_dir)
 
         # Restore original commit message
         commit.message = original_commit_message

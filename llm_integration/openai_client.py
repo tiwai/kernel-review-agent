@@ -23,7 +23,7 @@ class OpenAIClient(LLMClient):
         verbose: bool = False,
         debug: bool = False,
         dump_prompts: bool = False,
-        dump_dir: str = config.DEBUG_DUMP_DIR,
+        dump_dir: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
         **kwargs
     ):
@@ -37,20 +37,15 @@ class OpenAIClient(LLMClient):
             model: Model name to use
             verbose: Enable verbose output
             debug: Enable debug output
-            dump_prompts: Dump prompts and responses to files
-            dump_dir: Directory for prompt/response dumps
+            dump_prompts: Save prompts and responses to commit output directories
+            dump_dir: (Deprecated) Legacy dump directory
+            reasoning_effort: Reasoning effort level for models that support it
         """
         super().__init__(model, verbose, debug, dump_prompts, dump_dir)
 
         self.base_url = f"http://{host}:{port}/v1"
         self.api_key = api_key
         self.reasoning_effort = reasoning_effort
-
-        # Create dump directory if needed
-        if self.dump_prompts and not os.path.exists(self.dump_dir):
-            os.makedirs(self.dump_dir)
-            if self.debug:
-                print(f"[DEBUG] Created dump directory: {self.dump_dir}")
 
         try:
             # For HTTP connections (local servers), disable SSL verification
@@ -77,6 +72,8 @@ class OpenAIClient(LLMClient):
         self,
         system_prompt: str,
         user_content: str,
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None,
         max_tokens: int = config.DEFAULT_MAX_TOKENS,
         temperature: Optional[float] = None
     ) -> str:
@@ -97,7 +94,7 @@ class OpenAIClient(LLMClient):
             {"role": "user", "content": user_content}
         ]
 
-        response_text, _ = self._call_with_retry(messages, max_tokens, temperature)
+        response_text, _ = self._call_with_retry(messages, max_tokens, temperature, stage_name, commit_output_dir)
         return response_text
 
     def analyze_with_context(
@@ -117,17 +114,26 @@ class OpenAIClient(LLMClient):
         Returns:
             LLM response text
         """
-        response_text, _ = self._call_with_retry(messages, max_tokens, temperature)
+        response_text, _ = self._call_with_retry(messages, max_tokens, temperature, stage_name, commit_output_dir)
         return response_text
 
     def _call_with_retry(
         self,
         messages: List[Dict[str, str]],
         max_tokens: int,
-        temperature: Optional[float]
+        temperature: Optional[float],
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None
     ) -> tuple[str, Dict[str, int]]:
         """
         Call LLM API with exponential backoff retry.
+
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            max_tokens: Maximum tokens in response
+            temperature: Sampling temperature
+            stage_name: Stage name for prompt dumping
+            commit_output_dir: Output directory for prompt dumping
 
         Returns:
             Tuple of (response_text, usage_dict) where usage_dict contains
@@ -141,7 +147,7 @@ class OpenAIClient(LLMClient):
 
         # Dump prompt if enabled
         if self.dump_prompts:
-            self._dump_prompt(call_id, messages, max_tokens, temperature)
+            self._dump_prompt(call_id, messages, max_tokens, temperature, stage_name, commit_output_dir)
 
         for attempt in range(config.MAX_RETRIES):
             try:
@@ -171,6 +177,13 @@ class OpenAIClient(LLMClient):
 
                 response_text = response.choices[0].message.content
                 finish_reason = response.choices[0].finish_reason
+
+                # Extract thinking/reasoning blocks if present
+                thinking_text = None
+                if hasattr(response.choices[0].message, 'extended_thinking'):
+                    thinking_text = response.choices[0].message.extended_thinking
+                elif hasattr(response.choices[0].message, 'reasoning'):
+                    thinking_text = response.choices[0].message.reasoning
 
                 # Extract token usage if available
                 usage_dict = {
@@ -213,9 +226,9 @@ class OpenAIClient(LLMClient):
                             print(f"[WARNING] Response used {completion_tokens}/{max_tokens} tokens "
                                   f"({usage_ratio*100:.1f}%) - may be truncated")
 
-                # Dump response if enabled
+                # Dump response and thinking if enabled
                 if self.dump_prompts:
-                    self._dump_response(call_id, response_text)
+                    self._dump_response(call_id, response_text, thinking_text, usage_dict, finish_reason, stage_name, commit_output_dir)
 
                 return response_text, usage_dict
 
@@ -284,10 +297,20 @@ class OpenAIClient(LLMClient):
         call_id: int,
         messages: List[Dict[str, str]],
         max_tokens: int,
-        temperature: Optional[float]
+        temperature: Optional[float],
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None
     ):
-        """Dump prompt to file for debugging."""
-        filename = os.path.join(self.dump_dir, f"{call_id:03d}_prompt.txt")
+        """Dump prompt to file for training data export."""
+        # Determine output directory and filename
+        if commit_output_dir and stage_name:
+            # New structure: output_dir/prompts/stage-prompt.txt
+            prompts_dir = os.path.join(commit_output_dir, "prompts")
+            os.makedirs(prompts_dir, exist_ok=True)
+            filename = os.path.join(prompts_dir, f"{stage_name}-prompt.txt")
+        else:
+            # Fallback to old structure for compatibility
+            filename = os.path.join(self.dump_dir, f"{call_id:03d}_prompt.txt")
 
         try:
             with open(filename, 'w') as f:
@@ -296,6 +319,10 @@ class OpenAIClient(LLMClient):
                 f.write(f"Max Tokens: {max_tokens}\n")
                 temp_str = f"{temperature}" if temperature is not None else "default"
                 f.write(f"Temperature: {temp_str}\n")
+                if self.reasoning_effort:
+                    f.write(f"Reasoning Effort: {self.reasoning_effort}\n")
+                if stage_name:
+                    f.write(f"Stage: {stage_name}\n")
                 f.write(f"\n{'='*80}\n\n")
 
                 for i, msg in enumerate(messages):
@@ -311,18 +338,69 @@ class OpenAIClient(LLMClient):
         except Exception as e:
             print(f"Warning: Failed to dump prompt: {e}")
 
-    def _dump_response(self, call_id: int, response: str):
-        """Dump response to file for debugging."""
-        filename = os.path.join(self.dump_dir, f"{call_id:03d}_response.txt")
+    def _dump_response(
+        self,
+        call_id: int,
+        response: str,
+        thinking: Optional[str] = None,
+        usage_dict: Optional[Dict] = None,
+        finish_reason: Optional[str] = None,
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None
+    ):
+        """Dump response, thinking, and metadata to files for training data export."""
+        # Determine output directory and filenames
+        if commit_output_dir and stage_name:
+            # New structure: output_dir/prompts/stage-*.txt and stage-metadata.json
+            prompts_dir = os.path.join(commit_output_dir, "prompts")
+            os.makedirs(prompts_dir, exist_ok=True)
+            response_file = os.path.join(prompts_dir, f"{stage_name}-response.txt")
+            thinking_file = os.path.join(prompts_dir, f"{stage_name}-thinking.txt")
+            metadata_file = os.path.join(prompts_dir, f"{stage_name}-metadata.json")
+        else:
+            # Fallback to old structure
+            response_file = os.path.join(self.dump_dir, f"{call_id:03d}_response.txt")
+            thinking_file = None
+            metadata_file = None
 
         try:
-            with open(filename, 'w') as f:
+            # Dump response
+            with open(response_file, 'w') as f:
                 f.write(f"=== LLM Response #{call_id} ===\n\n")
                 f.write(response)
                 f.write("\n")
 
             if self.debug:
-                print(f"[DEBUG] Dumped response to: {filename}")
+                print(f"[DEBUG] Dumped response to: {response_file}")
+
+            # Dump thinking if present (only in new structure)
+            if thinking and thinking_file:
+                with open(thinking_file, 'w') as f:
+                    f.write(thinking)
+                if self.debug:
+                    print(f"[DEBUG] Dumped thinking to: {thinking_file}")
+
+            # Dump metadata (only in new structure)
+            if metadata_file and stage_name:
+                import json
+                from datetime import datetime, timezone
+                metadata = {
+                    "stage": stage_name,
+                    "model": self.model,
+                    "max_tokens": usage_dict.get('total_tokens', 0) if usage_dict else 0,
+                    "temperature": None,  # Would need to be passed from caller
+                    "reasoning_effort": self.reasoning_effort,
+                    "input_tokens": usage_dict.get('prompt_tokens', 0) if usage_dict else 0,
+                    "output_tokens": usage_dict.get('completion_tokens', 0) if usage_dict else 0,
+                    "total_tokens": usage_dict.get('total_tokens', 0) if usage_dict else 0,
+                    "finish_reason": finish_reason,
+                    "has_thinking": thinking is not None and len(thinking) > 0,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+                with open(metadata_file, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                if self.debug:
+                    print(f"[DEBUG] Dumped metadata to: {metadata_file}")
 
         except Exception as e:
             print(f"Warning: Failed to dump response: {e}")

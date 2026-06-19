@@ -14,7 +14,7 @@ class LLMClient(ABC):
         verbose: bool = False,
         debug: bool = False,
         dump_prompts: bool = False,
-        dump_dir: str = config.DEBUG_DUMP_DIR
+        dump_dir: Optional[str] = None
     ):
         """
         Initialize LLM client.
@@ -23,14 +23,14 @@ class LLMClient(ABC):
             model: Model name to use
             verbose: Enable verbose output
             debug: Enable debug output
-            dump_prompts: Dump prompts and responses to files
-            dump_dir: Directory for prompt/response dumps
+            dump_prompts: Save prompts and responses to commit output directories
+            dump_dir: (Deprecated) Legacy dump directory, no longer used
         """
         self.model = model
         self.verbose = verbose
         self.debug = debug
         self.dump_prompts = dump_prompts
-        self.dump_dir = dump_dir
+        self.dump_dir = dump_dir or config.DEBUG_DUMP_DIR  # Fallback for compatibility
         self.call_counter = 0
         # Token usage tracking
         self.total_prompt_tokens = 0

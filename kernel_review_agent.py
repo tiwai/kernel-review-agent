@@ -270,15 +270,9 @@ Examples:
     )
 
     parser.add_argument(
-        "--dump-prompts",
+        "--save-prompts",
         action="store_true",
-        help="Dump LLM prompts and responses to files for debugging"
-    )
-
-    parser.add_argument(
-        "--dump-dir",
-        default=config.DEBUG_DUMP_DIR,
-        help=f"Directory for prompt/response dumps (default: {config.DEBUG_DUMP_DIR})"
+        help="Save LLM prompts, responses, and thinking blocks in commit output directory under prompts/ subdirectory"
     )
 
     # Host reset options
@@ -496,9 +490,7 @@ Examples:
         print(f"[DEBUG]   Model: {args.model}")
         print(f"[DEBUG]   Verbose: {args.verbose}")
         print(f"[DEBUG]   Debug: {args.debug}")
-        print(f"[DEBUG]   Dump prompts: {args.dump_prompts}")
-        if args.dump_prompts:
-            print(f"[DEBUG]   Dump directory: {args.dump_dir}")
+        print(f"[DEBUG]   Save prompts: {args.save_prompts}")
         print(f"[DEBUG]   Skip verification: {args.skip_verification}")
         print(f"[DEBUG]   Output directory: {args.output_dir}")
         print()
@@ -564,8 +556,7 @@ Examples:
             'model': args.model,
             'verbose': args.verbose,
             'debug': args.debug,
-            'dump_prompts': args.dump_prompts,
-            'dump_dir': args.dump_dir,
+            'dump_prompts': args.save_prompts,
         }
 
         if provider == 'openai':
@@ -763,8 +754,7 @@ Examples:
                 model=args.model,
                 verbose=args.verbose,
                 debug=args.debug,
-                dump_prompts=args.dump_prompts,
-                dump_dir=args.dump_dir,
+                dump_prompts=args.save_prompts,
                 reasoning_effort=args.reasoning_effort or None
             )
 
@@ -1002,7 +992,7 @@ Examples:
 
                 # Execute review with timing
                 start_time = time.time()
-                result = workflow.execute_review(commit)
+                result = workflow.execute_review(commit, commit_output_dir=args.output_dir)
                 elapsed_time = time.time() - start_time
 
                 if args.debug:
@@ -1013,7 +1003,7 @@ Examples:
                     if args.verbose:
                         print(f"  No issues found in {elapsed_time:.1f}s — re-evaluating...")
                     reeval_start = time.time()
-                    result2 = workflow.execute_review(commit)
+                    result2 = workflow.execute_review(commit, commit_output_dir=args.output_dir)
                     reeval_elapsed = time.time() - reeval_start
                     if len(result2.findings) > 0:
                         if args.verbose:
@@ -1144,7 +1134,7 @@ Examples:
 
                 # Execute review with timing
                 start_time = time.time()
-                result = workflow.execute_review(commit)
+                result = workflow.execute_review(commit, commit_output_dir=commit_dir)
                 elapsed_time = time.time() - start_time
 
                 if args.debug:
@@ -1155,7 +1145,7 @@ Examples:
                     if args.verbose:
                         print(f"  No issues found in {elapsed_time:.1f}s — re-evaluating...")
                     reeval_start = time.time()
-                    result2 = workflow.execute_review(commit)
+                    result2 = workflow.execute_review(commit, commit_output_dir=commit_dir)
                     reeval_elapsed = time.time() - reeval_start
                     if len(result2.findings) > 0:
                         if args.verbose:

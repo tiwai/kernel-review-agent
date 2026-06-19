@@ -178,12 +178,13 @@ class ReviewWorkflow:
             code_context_formatted=context.get('code_context_formatted')
         )
 
-    def execute_review(self, commit: Commit) -> ReviewResult:
+    def execute_review(self, commit: Commit, commit_output_dir: Optional[str] = None) -> ReviewResult:
         """
         Execute full 5-task review protocol.
 
         Args:
             commit: Commit to review
+            commit_output_dir: Output directory for this commit (for prompt dumping)
 
         Returns:
             ReviewResult with findings and metadata
@@ -225,7 +226,7 @@ class ReviewWorkflow:
             print(f"[DEBUG] Task 1: Categorizing changes")
             print(f"[DEBUG] Calling LLM for categorization...")
 
-        categories = self._categorize_changes(commit, context)
+        categories = self._categorize_changes(commit, context, commit_output_dir)
 
         if self.verbose:
             print(f"      Found {len(categories)} change categories")
@@ -257,7 +258,7 @@ class ReviewWorkflow:
             print(f"[DEBUG] Loading subsystem guides: {subsystems}")
             print(f"[DEBUG] Calling LLM for regression analysis...")
 
-        findings = self._analyze_regressions(commit, categories, context, subsystems)
+        findings = self._analyze_regressions(commit, categories, context, subsystems, commit_output_dir)
 
         if self.verbose:
             print(f"      Found {len(findings)} potential issues")
@@ -324,7 +325,7 @@ class ReviewWorkflow:
                 print(f"[DEBUG] Task 3: Verifying findings")
                 print(f"[DEBUG] Applying false-positive checks to {len(findings)} findings...")
 
-            verified = self._verify_findings(findings, context, commit)
+            verified = self._verify_findings(findings, context, commit, commit_output_dir)
 
             if self.verbose:
                 print(f"      {len(verified)} issues after verification")
@@ -584,7 +585,13 @@ class ReviewWorkflow:
             f"JSON array:"
         )
         try:
-            response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=max_tokens)
+            response = self.llm.analyze_code(
+                system_prompt,
+                user_prompt,
+                stage_name=None,  # Reformatting is internal, no stage
+                commit_output_dir=None,
+                max_tokens=max_tokens
+            )
             return self._extract_json_array(response)
         except Exception:
             return None
@@ -619,9 +626,14 @@ class ReviewWorkflow:
 
         return None
 
-    def _categorize_changes(self, commit: Commit, context: Dict) -> List[Dict]:
+    def _categorize_changes(self, commit: Commit, context: Dict, commit_output_dir: Optional[str] = None) -> List[Dict]:
         """
         Task 1: Categorize changes using LLM.
+
+        Args:
+            commit: Commit to categorize
+            context: Code context
+            commit_output_dir: Output directory for this commit (for prompt dumping)
 
         Returns:
             List of change categories
@@ -655,7 +667,13 @@ If there are no distinct changes, return: []
 
 JSON array:"""
 
-        response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=config.CATEGORIZE_MAX_TOKENS)
+        response = self.llm.analyze_code(
+            system_prompt,
+            user_prompt,
+            stage_name="categorize",
+            commit_output_dir=commit_output_dir,
+            max_tokens=config.CATEGORIZE_MAX_TOKENS
+        )
 
         # Parse JSON response
         try:
@@ -716,10 +734,18 @@ JSON array:"""
         commit: Commit,
         categories: List[Dict],
         context: Dict,
-        subsystems: List[str]
+        subsystems: List[str],
+        commit_output_dir: Optional[str] = None
     ) -> List[Dict]:
         """
         Task 2: Analyze for regressions using LLM.
+
+        Args:
+            commit: Commit to analyze
+            categories: Change categories from Task 1
+            context: Code context
+            subsystems: Matched subsystems
+            commit_output_dir: Output directory for this commit (for prompt dumping)
 
         Returns:
             List of potential findings
@@ -788,7 +814,13 @@ If no issues found, return: []
 
 JSON array:"""
 
-        response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=config.ANALYZE_MAX_TOKENS)
+        response = self.llm.analyze_code(
+            system_prompt,
+            user_prompt,
+            stage_name="analyze",
+            commit_output_dir=commit_output_dir,
+            max_tokens=config.ANALYZE_MAX_TOKENS
+        )
 
         # Parse JSON response
         try:
@@ -860,13 +892,23 @@ JSON array:"""
         self,
         findings: List[Dict],
         context: Dict,
-        commit: Commit
+        commit: Commit,
+        commit_output_dir: Optional[str] = None
     ) -> List[Dict]:
         """
         Task 3: Verify findings using false-positive guide and adversarial persona.
 
         Now processes findings sequentially to maintain model focus and uses
         a skeptical persona to reduce confirmation bias.
+
+        Args:
+            findings: Findings to verify
+            context: Code context
+            commit: Commit being reviewed
+            commit_output_dir: Output directory for this commit (for prompt dumping)
+
+        Returns:
+            List of verified findings
         """
         if not findings:
             return []
@@ -955,7 +997,13 @@ Rules:
 JSON array (empty [] if false positive):"""
 
             try:
-                response = self.llm.analyze_code(system_prompt, user_prompt, max_tokens=config.VERIFY_MAX_TOKENS)
+                response = self.llm.analyze_code(
+                    system_prompt,
+                    user_prompt,
+                    stage_name="verify",
+                    commit_output_dir=commit_output_dir,
+                    max_tokens=config.VERIFY_MAX_TOKENS
+                )
                 
                 json_str = self._extract_json_array(response)
                 if json_str is not None:
