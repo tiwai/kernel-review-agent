@@ -96,6 +96,8 @@ class GoogleClient(LLMClient):
         Args:
             system_prompt: System prompt (instructions, context)
             user_content: User content (diff, code, etc.)
+            stage_name: Stage name for prompt dumping (optional)
+            commit_output_dir: Output directory for prompt dumping (optional)
             max_tokens: Maximum tokens in response
             temperature: Sampling temperature (None = use model default)
 
@@ -105,7 +107,10 @@ class GoogleClient(LLMClient):
         # Combine system and user prompts for Gemini
         combined_prompt = f"{system_prompt}\n\n{user_content}"
 
-        return self._call_with_retry(combined_prompt, max_tokens, temperature)
+        return self._call_with_retry(
+            combined_prompt, max_tokens, temperature,
+            stage_name=stage_name, commit_output_dir=commit_output_dir
+        )
 
     def analyze_with_context(
         self,
@@ -136,7 +141,9 @@ class GoogleClient(LLMClient):
         self,
         prompt: str,
         max_tokens: int,
-        temperature: Optional[float]
+        temperature: Optional[float],
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None
     ) -> str:
         """Call Google Vertex AI with exponential backoff retry."""
         last_error = None
@@ -147,7 +154,10 @@ class GoogleClient(LLMClient):
 
         # Dump prompt if enabled
         if self.dump_prompts:
-            self._dump_prompt(call_id, prompt, max_tokens, temperature)
+            self._dump_prompt(
+                call_id, prompt, max_tokens, temperature,
+                stage_name=stage_name, commit_output_dir=commit_output_dir
+            )
 
         for attempt in range(config.MAX_RETRIES):
             try:
@@ -199,7 +209,10 @@ class GoogleClient(LLMClient):
 
                 # Dump response if enabled
                 if self.dump_prompts:
-                    self._dump_response(call_id, response_text)
+                    self._dump_response(
+                        call_id, response_text,
+                        stage_name=stage_name, commit_output_dir=commit_output_dir
+                    )
 
                 return response_text
 
@@ -243,11 +256,23 @@ class GoogleClient(LLMClient):
         call_id: int,
         prompt: str,
         max_tokens: int,
-        temperature: Optional[float]
+        temperature: Optional[float],
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None
     ):
         """Dump prompt to file for debugging."""
-        os.makedirs(self.dump_dir, exist_ok=True)
-        filename = os.path.join(self.dump_dir, f"{call_id:03d}_prompt.txt")
+        # Determine output directory and filename
+        if commit_output_dir and stage_name:
+            prompts_dir = os.path.join(commit_output_dir, "prompts")
+            os.makedirs(prompts_dir, exist_ok=True)
+            filename = os.path.join(prompts_dir, f"{stage_name}-{call_id:03d}-prompt.txt")
+        elif commit_output_dir:
+            prompts_dir = os.path.join(commit_output_dir, "prompts")
+            os.makedirs(prompts_dir, exist_ok=True)
+            filename = os.path.join(prompts_dir, f"{call_id:03d}_prompt.txt")
+        else:
+            os.makedirs(self.dump_dir, exist_ok=True)
+            filename = os.path.join(self.dump_dir, f"{call_id:03d}_prompt.txt")
 
         try:
             with open(filename, 'w') as f:
@@ -268,10 +293,26 @@ class GoogleClient(LLMClient):
         except Exception as e:
             print(f"Warning: Failed to dump prompt: {e}")
 
-    def _dump_response(self, call_id: int, response: str):
+    def _dump_response(
+        self,
+        call_id: int,
+        response: str,
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None
+    ):
         """Dump response to file for debugging."""
-        os.makedirs(self.dump_dir, exist_ok=True)
-        filename = os.path.join(self.dump_dir, f"{call_id:03d}_response.txt")
+        # Determine output directory and filename
+        if commit_output_dir and stage_name:
+            prompts_dir = os.path.join(commit_output_dir, "prompts")
+            os.makedirs(prompts_dir, exist_ok=True)
+            filename = os.path.join(prompts_dir, f"{stage_name}-{call_id:03d}-response.txt")
+        elif commit_output_dir:
+            prompts_dir = os.path.join(commit_output_dir, "prompts")
+            os.makedirs(prompts_dir, exist_ok=True)
+            filename = os.path.join(prompts_dir, f"{call_id:03d}_response.txt")
+        else:
+            os.makedirs(self.dump_dir, exist_ok=True)
+            filename = os.path.join(self.dump_dir, f"{call_id:03d}_response.txt")
 
         try:
             with open(filename, 'w') as f:

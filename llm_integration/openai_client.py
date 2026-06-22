@@ -304,10 +304,10 @@ class OpenAIClient(LLMClient):
         """Dump prompt to file for training data export."""
         # Determine output directory and filename
         if commit_output_dir and stage_name:
-            # New structure: output_dir/prompts/stage-prompt.txt
+            # New structure: output_dir/prompts/stage-NNN-prompt.txt (include call_id to avoid overwrites)
             prompts_dir = os.path.join(commit_output_dir, "prompts")
             os.makedirs(prompts_dir, exist_ok=True)
-            filename = os.path.join(prompts_dir, f"{stage_name}-prompt.txt")
+            filename = os.path.join(prompts_dir, f"{stage_name}-{call_id:03d}-prompt.txt")
         else:
             # Fallback to old structure for compatibility
             os.makedirs(self.dump_dir, exist_ok=True)
@@ -352,12 +352,12 @@ class OpenAIClient(LLMClient):
         """Dump response, thinking, and metadata to files for training data export."""
         # Determine output directory and filenames
         if commit_output_dir and stage_name:
-            # New structure: output_dir/prompts/stage-*.txt and stage-metadata.json
+            # New structure: output_dir/prompts/stage-NNN-*.txt (include call_id to avoid overwrites)
             prompts_dir = os.path.join(commit_output_dir, "prompts")
             os.makedirs(prompts_dir, exist_ok=True)
-            response_file = os.path.join(prompts_dir, f"{stage_name}-response.txt")
-            thinking_file = os.path.join(prompts_dir, f"{stage_name}-thinking.txt")
-            metadata_file = os.path.join(prompts_dir, f"{stage_name}-metadata.json")
+            response_file = os.path.join(prompts_dir, f"{stage_name}-{call_id:03d}-response.txt")
+            thinking_file = os.path.join(prompts_dir, f"{stage_name}-{call_id:03d}-thinking.txt")
+            metadata_file = os.path.join(prompts_dir, f"{stage_name}-{call_id:03d}-metadata.json")
         else:
             # Fallback to old structure
             os.makedirs(self.dump_dir, exist_ok=True)

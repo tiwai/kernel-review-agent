@@ -88,6 +88,8 @@ class AnthropicClient(LLMClient):
         Args:
             system_prompt: System prompt (instructions, context)
             user_content: User content (diff, code, etc.)
+            stage_name: Stage name for prompt dumping (optional)
+            commit_output_dir: Output directory for prompt dumping (optional)
             max_tokens: Maximum tokens in response
             temperature: Sampling temperature (None = use model default)
 
@@ -98,7 +100,10 @@ class AnthropicClient(LLMClient):
             {"role": "user", "content": user_content}
         ]
 
-        response_text, _ = self._call_with_retry(system_prompt, messages, max_tokens, temperature)
+        response_text, _ = self._call_with_retry(
+            system_prompt, messages, max_tokens, temperature,
+            stage_name=stage_name, commit_output_dir=commit_output_dir
+        )
         return response_text
 
     def analyze_with_context(
@@ -136,10 +141,20 @@ class AnthropicClient(LLMClient):
         system_prompt: str,
         messages: List[Dict[str, str]],
         max_tokens: int,
-        temperature: Optional[float]
+        temperature: Optional[float],
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None
     ) -> tuple[str, Dict[str, int]]:
         """
         Call Anthropic API with exponential backoff retry.
+
+        Args:
+            system_prompt: System prompt
+            messages: User messages
+            max_tokens: Max tokens in response
+            temperature: Sampling temperature
+            stage_name: Stage name for prompt dumping (optional)
+            commit_output_dir: Output directory for prompt dumping (optional)
 
         Returns:
             Tuple of (response_text, usage_dict) where usage_dict contains
@@ -153,7 +168,10 @@ class AnthropicClient(LLMClient):
 
         # Dump prompt if enabled
         if self.dump_prompts:
-            self._dump_prompt(call_id, system_prompt, messages, max_tokens, temperature)
+            self._dump_prompt(
+                call_id, system_prompt, messages, max_tokens, temperature,
+                stage_name=stage_name, commit_output_dir=commit_output_dir
+            )
 
         for attempt in range(config.MAX_RETRIES):
             try:
@@ -219,7 +237,10 @@ class AnthropicClient(LLMClient):
 
                 # Dump response if enabled
                 if self.dump_prompts:
-                    self._dump_response(call_id, response_text)
+                    self._dump_response(
+                        call_id, response_text,
+                        stage_name=stage_name, commit_output_dir=commit_output_dir
+                    )
 
                 return response_text, usage_dict
 
@@ -265,11 +286,26 @@ class AnthropicClient(LLMClient):
         system_prompt: str,
         messages: List[Dict[str, str]],
         max_tokens: int,
-        temperature: Optional[float]
+        temperature: Optional[float],
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None
     ):
         """Dump prompt to file for debugging."""
-        os.makedirs(self.dump_dir, exist_ok=True)
-        filename = os.path.join(self.dump_dir, f"{call_id:03d}_prompt.txt")
+        # Determine output directory and filename
+        if commit_output_dir and stage_name:
+            # Use commit-specific prompts directory with stage-prefixed filename
+            prompts_dir = os.path.join(commit_output_dir, "prompts")
+            os.makedirs(prompts_dir, exist_ok=True)
+            filename = os.path.join(prompts_dir, f"{stage_name}-{call_id:03d}-prompt.txt")
+        elif commit_output_dir:
+            # Use commit-specific prompts directory with call counter only
+            prompts_dir = os.path.join(commit_output_dir, "prompts")
+            os.makedirs(prompts_dir, exist_ok=True)
+            filename = os.path.join(prompts_dir, f"{call_id:03d}_prompt.txt")
+        else:
+            # Fallback to legacy dump_dir
+            os.makedirs(self.dump_dir, exist_ok=True)
+            filename = os.path.join(self.dump_dir, f"{call_id:03d}_prompt.txt")
 
         try:
             with open(filename, 'w') as f:
@@ -298,10 +334,26 @@ class AnthropicClient(LLMClient):
         except Exception as e:
             print(f"Warning: Failed to dump prompt: {e}")
 
-    def _dump_response(self, call_id: int, response: str):
+    def _dump_response(
+        self,
+        call_id: int,
+        response: str,
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None
+    ):
         """Dump response to file for debugging."""
-        os.makedirs(self.dump_dir, exist_ok=True)
-        filename = os.path.join(self.dump_dir, f"{call_id:03d}_response.txt")
+        # Determine output directory and filename (same logic as _dump_prompt)
+        if commit_output_dir and stage_name:
+            prompts_dir = os.path.join(commit_output_dir, "prompts")
+            os.makedirs(prompts_dir, exist_ok=True)
+            filename = os.path.join(prompts_dir, f"{stage_name}-{call_id:03d}-response.txt")
+        elif commit_output_dir:
+            prompts_dir = os.path.join(commit_output_dir, "prompts")
+            os.makedirs(prompts_dir, exist_ok=True)
+            filename = os.path.join(prompts_dir, f"{call_id:03d}_response.txt")
+        else:
+            os.makedirs(self.dump_dir, exist_ok=True)
+            filename = os.path.join(self.dump_dir, f"{call_id:03d}_response.txt")
 
         try:
             with open(filename, 'w') as f:
