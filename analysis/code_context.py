@@ -32,7 +32,7 @@ class CodeContextLoader:
             Dictionary with full function definitions, callers, etc.
         """
         if self.debug:
-            print(f"[DEBUG] Loading full code context for commit {self.commit.sha[:12]}")
+            print(f"Loading full code context for commit {self.commit.sha[:12]}")
 
         context = {
             "changed_functions": [],
@@ -45,7 +45,7 @@ class CodeContextLoader:
         changed_functions = self._extract_changed_functions_from_diff()
 
         if self.debug:
-            print(f"[DEBUG] Found {len(changed_functions)} changed functions")
+            print(f"Found {len(changed_functions)} changed functions")
 
         # For each changed function, load full definition and callers
         for func_info in changed_functions:
@@ -53,7 +53,7 @@ class CodeContextLoader:
             file_path = func_info['file']
 
             if self.debug:
-                print(f"[DEBUG] Loading context for {func_name} in {file_path}")
+                print(f"Loading context for {func_name} in {file_path}")
 
             # Load full function definition (current and parent)
             # In patch mode, commit.sha is a filename, not a git ref, so use HEAD
@@ -78,14 +78,14 @@ class CodeContextLoader:
         timer_callbacks = self._extract_timer_callbacks_from_diff()
 
         if self.debug and timer_callbacks:
-            print(f"[DEBUG] Found {len(timer_callbacks)} timer/workqueue callbacks")
+            print(f"Found {len(timer_callbacks)} timer/workqueue callbacks")
 
         for callback_info in timer_callbacks:
             callback_name = callback_info['name']
             file_path = callback_info['file']
 
             if self.debug:
-                print(f"[DEBUG] Loading timer callback: {callback_name} in {file_path}")
+                print(f"Loading timer callback: {callback_name} in {file_path}")
 
             # Load callback function definition
             # In patch mode, commit.sha is a filename, not a git ref, so use HEAD
@@ -298,7 +298,7 @@ class CodeContextLoader:
 
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             if self.debug:
-                print(f"[DEBUG] Could not load {func_name} from {commit_ref}:{file_path}: {e}")
+                print(f"Could not load {func_name} from {commit_ref}:{file_path}: {e}")
 
         return None
 
@@ -337,7 +337,7 @@ class CodeContextLoader:
 
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             if self.debug:
-                print(f"[DEBUG] Could not find callers for {func_name}: {e}")
+                print(f"Could not find callers for {func_name}: {e}")
             return []
 
     def _load_file(self, file_path: str, commit_ref: str) -> Optional[str]:

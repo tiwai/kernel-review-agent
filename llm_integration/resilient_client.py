@@ -258,7 +258,7 @@ class ResilientLLMClient(LLMClient):
 
             if self.debug:
                 print(
-                    f"[DEBUG] Creating temp client with model: {self.fallback_model}",
+                    f"Creating temp client with model: {self.fallback_model}",
                     file=sys.stderr
                 )
 
@@ -273,7 +273,7 @@ class ResilientLLMClient(LLMClient):
 
             if self.debug:
                 print(
-                    f"[DEBUG] Reset test response: {test_response}",
+                    f"Reset test response: {test_response}",
                     file=sys.stderr
                 )
 

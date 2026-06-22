@@ -38,13 +38,13 @@ class SuseUpstreamVerifier:
             self.kernel_source = MultiRepoExtractor(kernel_source_repo, verbose)
             if debug:
                 available = self.kernel_source.is_available()
-                print(f"[DEBUG] SUSE kernel-source repo: {kernel_source_repo} (available: {available})")
+                print(f"SUSE kernel-source repo: {kernel_source_repo} (available: {available})")
 
         if upstream_repo:
             self.upstream = MultiRepoExtractor(upstream_repo, verbose)
             if debug:
                 available = self.upstream.is_available()
-                print(f"[DEBUG] Upstream Linux repo: {upstream_repo} (available: {available})")
+                print(f"Upstream Linux repo: {upstream_repo} (available: {available})")
 
     def is_enabled(self) -> bool:
         """Check if SUSE verification is enabled and available."""
@@ -110,9 +110,9 @@ class SuseUpstreamVerifier:
             print(f"\n[SUSE] Verifying against upstream...")
 
         if self.debug:
-            print(f"[DEBUG] SUSE verification starting for commit {downstream_commit.sha[:12]}")
-            print(f"[DEBUG] suse-commit tag: {downstream_commit.suse_commit}")
-            print(f"[DEBUG] Git-commit tag (direct): {downstream_commit.upstream_commit}")
+            print(f"SUSE verification starting for commit {downstream_commit.sha[:12]}")
+            print(f"suse-commit tag: {downstream_commit.suse_commit}")
+            print(f"Git-commit tag (direct): {downstream_commit.upstream_commit}")
 
         result = {
             'suse_commit': None,
@@ -146,8 +146,8 @@ class SuseUpstreamVerifier:
             result['suse_commit'] = suse_commit
 
             if self.debug:
-                print(f"[DEBUG] Found SUSE commit: {suse_commit.subject}")
-                print(f"[DEBUG] Git-commit tag from SUSE: {suse_commit.upstream_commit}")
+                print(f"Found SUSE commit: {suse_commit.subject}")
+                print(f"Git-commit tag from SUSE: {suse_commit.upstream_commit}")
 
             if not suse_commit.upstream_commit:
                 if self.verbose:
@@ -169,7 +169,7 @@ class SuseUpstreamVerifier:
         if self.upstream and self.upstream.is_available():
             upstream_commit = self.upstream.get_commit(upstream_sha)
             if self.debug and upstream_commit:
-                print(f"[DEBUG] Fetched upstream commit from upstream repo")
+                print(f"Fetched upstream commit from upstream repo")
 
         # Fallback: try current repository (might be Linux kernel)
         if not upstream_commit:
@@ -177,7 +177,7 @@ class SuseUpstreamVerifier:
                 local_git = CommitExtractor(verbose=self.verbose)
                 upstream_commit = local_git.get_commit(upstream_sha)
                 if self.debug and upstream_commit:
-                    print(f"[DEBUG] Fetched upstream commit from current repo")
+                    print(f"Fetched upstream commit from current repo")
             except Exception:
                 pass
 
@@ -202,14 +202,14 @@ class SuseUpstreamVerifier:
         common_files = downstream_files & upstream_files
 
         if self.debug:
-            print(f"[DEBUG] Downstream files: {downstream_files}")
-            print(f"[DEBUG] Upstream files: {upstream_files}")
-            print(f"[DEBUG] Common files: {common_files}")
+            print(f"Downstream files: {downstream_files}")
+            print(f"Upstream files: {upstream_files}")
+            print(f"Common files: {common_files}")
 
         # If all downstream files are in upstream, likely all findings are in upstream
         if downstream_files and downstream_files.issubset(upstream_files):
             if self.debug:
-                print(f"[DEBUG] All downstream files present in upstream - likely same changes")
+                print(f"All downstream files present in upstream - likely same changes")
 
         for finding in findings:
             if self._finding_exists_in_upstream(finding, upstream_commit, downstream_commit):
@@ -279,7 +279,7 @@ class SuseUpstreamVerifier:
                     if len(normalized_line) > 10 and normalized_line in normalized_upstream:
                         matched_lines.append(code_line)
                         if self.debug:
-                            print(f"[DEBUG] Evidence found in upstream: {code_line[:60]}")
+                            print(f"Evidence found in upstream: {code_line[:60]}")
                     else:
                         unmatched_lines.append(code_line)
 
@@ -289,10 +289,10 @@ class SuseUpstreamVerifier:
                     if self.verbose or self.debug:
                         print(f"[SUSE] Evidence not found in upstream - downstream-only bug")
                         if self.debug:
-                            print(f"[DEBUG] Matched lines: {len(matched_lines)}")
-                            print(f"[DEBUG] Unmatched lines: {len(unmatched_lines)}")
+                            print(f"Matched lines: {len(matched_lines)}")
+                            print(f"Unmatched lines: {len(unmatched_lines)}")
                             for line in unmatched_lines[:2]:
-                                print(f"[DEBUG]   Missing: {line[:60]}")
+                                print(f"  Missing: {line[:60]}")
                     return False
 
         # Strategy 0b: Compare diffs for similarity and completeness
@@ -320,14 +320,14 @@ class SuseUpstreamVerifier:
             extra_in_downstream = downstream_added - upstream_added
 
             if self.debug:
-                print(f"[DEBUG] Diff comparison:")
-                print(f"[DEBUG]   Common lines: {len(common_lines)}")
-                print(f"[DEBUG]   Missing in downstream: {len(missing_in_downstream)}")
-                print(f"[DEBUG]   Extra in downstream: {len(extra_in_downstream)}")
+                print(f"Diff comparison:")
+                print(f"  Common lines: {len(common_lines)}")
+                print(f"  Missing in downstream: {len(missing_in_downstream)}")
+                print(f"  Extra in downstream: {len(extra_in_downstream)}")
                 if missing_in_downstream:
-                    print(f"[DEBUG]   Missing lines: {list(missing_in_downstream)[:3]}")
+                    print(f"  Missing lines: {list(missing_in_downstream)[:3]}")
                 if extra_in_downstream:
-                    print(f"[DEBUG]   Extra lines: {list(extra_in_downstream)[:3]}")
+                    print(f"  Extra lines: {list(extra_in_downstream)[:3]}")
 
             # If there are significant differences, the changes are NOT the same
             # Missing lines from upstream indicate incomplete backport (downstream bug)
@@ -340,7 +340,7 @@ class SuseUpstreamVerifier:
                 # If less than 80% of upstream changes are in downstream, it's incomplete
                 if similarity < 0.8:
                     if self.debug:
-                        print(f"[DEBUG] Incomplete backport: only {similarity:.1%} similarity")
+                        print(f"Incomplete backport: only {similarity:.1%} similarity")
                     return False  # Downstream-only finding (incomplete backport)
 
                 # If there are missing critical lines (like goto, return, break), it's a bug
@@ -362,7 +362,7 @@ class SuseUpstreamVerifier:
                     return False  # Downstream-only bug
 
                 if self.debug:
-                    print(f"[DEBUG] Substantial overlap: {len(common_lines)} common lines")
+                    print(f"Substantial overlap: {len(common_lines)} common lines")
                 return True
 
         # Strategy 1: Check if the finding's location matches upstream changes
@@ -382,7 +382,7 @@ class SuseUpstreamVerifier:
         # Check if the file is modified in upstream
         if file_from_location and file_from_location in upstream_commit.files:
             if self.debug:
-                print(f"[DEBUG] Finding location {file_from_location} is in upstream files")
+                print(f"Finding location {file_from_location} is in upstream files")
             # File is modified in upstream, likely the same change
             return True
 
@@ -408,13 +408,13 @@ class SuseUpstreamVerifier:
         for pattern in key_patterns:
             if pattern in upstream_commit.diff:
                 if self.debug:
-                    print(f"[DEBUG] Found key pattern in upstream: {pattern}")
+                    print(f"Found key pattern in upstream: {pattern}")
                 return True
 
         # Strategy 3: Semantic Verification using LLM
         if self.llm:
             if self.debug:
-                print(f"[DEBUG] Falling back to semantic verification for {finding.get('type')}")
+                print(f"Falling back to semantic verification for {finding.get('type')}")
             
             return self._verify_finding_semantically(finding, upstream_commit, downstream_commit)
 
@@ -477,9 +477,9 @@ class SuseUpstreamVerifier:
                             rhs = stripped.split('=')[1].strip().rstrip(';')
                             if rhs in next_stripped:
                                 if self.debug:
-                                    print(f"[DEBUG] Found use-after-free pattern:")
-                                    print(f"[DEBUG]   Assignment: {stripped}")
-                                    print(f"[DEBUG]   Free: {next_stripped}")
+                                    print(f"Found use-after-free pattern:")
+                                    print(f"  Assignment: {stripped}")
+                                    print(f"  Free: {next_stripped}")
                                 return True
 
         return False
@@ -528,5 +528,5 @@ Answer ONLY: YES or NO."""
             return 'yes' in response.lower()
         except Exception as e:
             if self.debug:
-                print(f"[DEBUG] Semantic upstream verification failed: {e}")
+                print(f"Semantic upstream verification failed: {e}")
             return True # Default to True (upstream) to avoid over-reporting downstream-only bugs

@@ -59,7 +59,7 @@ class AnthropicClient(LLMClient):
         if self.dump_prompts and not os.path.exists(self.dump_dir):
             os.makedirs(self.dump_dir)
             if self.debug:
-                print(f"[DEBUG] Created dump directory: {self.dump_dir}")
+                print(f"Created dump directory: {self.dump_dir}")
 
         try:
             self.client = Anthropic(
@@ -70,8 +70,8 @@ class AnthropicClient(LLMClient):
             raise RuntimeError(f"Failed to initialize Anthropic client: {e}")
 
         if self.debug:
-            print(f"[DEBUG] Anthropic client initialized with timeout: {config.LLM_TIMEOUT}s")
-            print(f"[DEBUG] Using model: {self.model}")
+            print(f"Anthropic client initialized with timeout: {config.LLM_TIMEOUT}s")
+            print(f"Using model: {self.model}")
 
     def analyze_code(
         self,
@@ -162,10 +162,10 @@ class AnthropicClient(LLMClient):
 
                 if self.debug:
                     temp_str = f"{temperature}" if temperature is not None else "default"
-                    print(f"[DEBUG] Anthropic call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temp_str}")
-                    print(f"[DEBUG] System prompt length: {len(system_prompt)} chars")
+                    print(f"Anthropic call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temp_str}")
+                    print(f"System prompt length: {len(system_prompt)} chars")
                     total_msg_len = sum(len(m['content']) for m in messages)
-                    print(f"[DEBUG] Messages total length: {total_msg_len} chars")
+                    print(f"Messages total length: {total_msg_len} chars")
 
                 # Build API call kwargs
                 api_kwargs: Dict[str, Any] = {
@@ -194,9 +194,9 @@ class AnthropicClient(LLMClient):
                 self.total_tokens += usage_dict['total_tokens']
 
                 if self.debug:
-                    print(f"[DEBUG] Response length: {len(response_text)} chars")
-                    print(f"[DEBUG] Stop reason: {stop_reason}")
-                    print(f"[DEBUG] Token usage - input: {response.usage.input_tokens}, output: {response.usage.output_tokens}")
+                    print(f"Response length: {len(response_text)} chars")
+                    print(f"Stop reason: {stop_reason}")
+                    print(f"Token usage - input: {response.usage.input_tokens}, output: {response.usage.output_tokens}")
 
                 # Check for truncated response
                 if stop_reason == "max_tokens":
@@ -207,7 +207,7 @@ class AnthropicClient(LLMClient):
                     )
                     print(f"\n{warning_msg}\n", file=sys.stderr)
                     if self.debug:
-                        print(f"[DEBUG] Response ended with: ...{response_text[-100:]}")
+                        print(f"Response ended with: ...{response_text[-100:]}")
 
                 # Check if response is close to limit
                 completion_tokens = response.usage.output_tokens
@@ -293,7 +293,7 @@ class AnthropicClient(LLMClient):
                     f.write(f"\n\n{'='*80}\n\n")
 
             if self.debug:
-                print(f"[DEBUG] Dumped prompt to: {filename}")
+                print(f"Dumped prompt to: {filename}")
 
         except Exception as e:
             print(f"Warning: Failed to dump prompt: {e}")
@@ -310,7 +310,7 @@ class AnthropicClient(LLMClient):
                 f.write("\n")
 
             if self.debug:
-                print(f"[DEBUG] Dumped response to: {filename}")
+                print(f"Dumped response to: {filename}")
 
         except Exception as e:
             print(f"Warning: Failed to dump response: {e}")

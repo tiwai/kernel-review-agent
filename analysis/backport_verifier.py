@@ -70,8 +70,8 @@ class BackportVerifier:
         upstream_hunks = self._parse_diff_hunks(upstream.diff)
 
         if self.debug:
-            print(f"[DEBUG] Downstream: {len(downstream_hunks)} hunks")
-            print(f"[DEBUG] Upstream: {len(upstream_hunks)} hunks")
+            print(f"Downstream: {len(downstream_hunks)} hunks")
+            print(f"Upstream: {len(upstream_hunks)} hunks")
 
         # Detect file path changes
         file_path_changes = self._detect_file_path_changes(downstream_hunks, upstream_hunks)

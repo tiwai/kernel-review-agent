@@ -64,7 +64,7 @@ class GoogleClient(LLMClient):
         if self.dump_prompts and not os.path.exists(self.dump_dir):
             os.makedirs(self.dump_dir)
             if self.debug:
-                print(f"[DEBUG] Created dump directory: {self.dump_dir}")
+                print(f"Created dump directory: {self.dump_dir}")
 
         try:
             # Create GenAI client with Vertex AI backend
@@ -77,9 +77,9 @@ class GoogleClient(LLMClient):
             raise RuntimeError(f"Failed to initialize Google GenAI client: {e}")
 
         if self.debug:
-            print(f"[DEBUG] Google GenAI client initialized (Vertex AI backend)")
-            print(f"[DEBUG] Project: {self.project_id}, Location: {self.location}")
-            print(f"[DEBUG] Using model: {self.model}")
+            print(f"Google GenAI client initialized (Vertex AI backend)")
+            print(f"Project: {self.project_id}, Location: {self.location}")
+            print(f"Using model: {self.model}")
 
     def analyze_code(
         self,
@@ -156,8 +156,8 @@ class GoogleClient(LLMClient):
 
                 if self.debug:
                     temp_str = f"{temperature}" if temperature is not None else "default"
-                    print(f"[DEBUG] Google call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temp_str}")
-                    print(f"[DEBUG] Prompt length: {len(prompt)} chars")
+                    print(f"Google call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temp_str}")
+                    print(f"Prompt length: {len(prompt)} chars")
 
                 # Build generation config
                 config_dict = {
@@ -178,11 +178,11 @@ class GoogleClient(LLMClient):
                 response_text = response.text
 
                 if self.debug:
-                    print(f"[DEBUG] Response length: {len(response_text)} chars")
+                    print(f"Response length: {len(response_text)} chars")
                     # Gemini doesn't always provide finish reason in the same way
                     if hasattr(response, 'candidates') and response.candidates:
                         finish_reason = response.candidates[0].finish_reason
-                        print(f"[DEBUG] Finish reason: {finish_reason}")
+                        print(f"Finish reason: {finish_reason}")
 
                 # Check for truncated response
                 if hasattr(response, 'candidates') and response.candidates:
@@ -195,7 +195,7 @@ class GoogleClient(LLMClient):
                         )
                         print(f"\n{warning_msg}\n", file=sys.stderr)
                         if self.debug:
-                            print(f"[DEBUG] Response ended with: ...{response_text[-100:]}")
+                            print(f"Response ended with: ...{response_text[-100:]}")
 
                 # Dump response if enabled
                 if self.dump_prompts:
@@ -263,7 +263,7 @@ class GoogleClient(LLMClient):
                 f.write(f"\n\n{'='*80}\n\n")
 
             if self.debug:
-                print(f"[DEBUG] Dumped prompt to: {filename}")
+                print(f"Dumped prompt to: {filename}")
 
         except Exception as e:
             print(f"Warning: Failed to dump prompt: {e}")
@@ -280,7 +280,7 @@ class GoogleClient(LLMClient):
                 f.write("\n")
 
             if self.debug:
-                print(f"[DEBUG] Dumped response to: {filename}")
+                print(f"Dumped response to: {filename}")
 
         except Exception as e:
             print(f"Warning: Failed to dump response: {e}")

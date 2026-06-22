@@ -187,7 +187,7 @@ Respond: BUG or OK"""
 
             except Exception as e:
                 if self.debug:
-                    print(f"[DEBUG] Timer check failed for {callback}: {e}")
+                    print(f"Timer check failed for {callback}: {e}")
 
         return findings
 
@@ -244,7 +244,7 @@ Respond with JSON array: [{{"type":"...", "message":"...", "severity":"..."}}] o
 
             except Exception as e:
                 if self.debug:
-                    print(f"[DEBUG] Error check failed for {func_name}: {e}")
+                    print(f"Error check failed for {func_name}: {e}")
 
         return findings
 
@@ -295,7 +295,7 @@ Respond with JSON array or [].
 
         except Exception as e:
             if self.debug:
-                print(f"[DEBUG] Memory check failed: {e}")
+                print(f"Memory check failed: {e}")
 
         return findings
 

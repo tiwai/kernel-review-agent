@@ -66,7 +66,7 @@ class OpenAIClient(LLMClient):
             raise RuntimeError(f"Failed to initialize OpenAI client: {e}\nTraceback: {traceback.format_exc()}")
 
         if self.debug:
-            print(f"[DEBUG] OpenAI client initialized with timeout: {config.LLM_TIMEOUT}s")
+            print(f"OpenAI client initialized with timeout: {config.LLM_TIMEOUT}s")
 
     def analyze_code(
         self,
@@ -156,10 +156,10 @@ class OpenAIClient(LLMClient):
 
                 if self.debug:
                     temp_str = f"{temperature}" if temperature is not None else "default"
-                    print(f"[DEBUG] LLM call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temp_str}")
-                    print(f"[DEBUG] System prompt length: {len(messages[0]['content'])} chars")
+                    print(f"LLM call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temp_str}")
+                    print(f"System prompt length: {len(messages[0]['content'])} chars")
                     if len(messages) > 1:
-                        print(f"[DEBUG] User prompt length: {len(messages[1]['content'])} chars")
+                        print(f"User prompt length: {len(messages[1]['content'])} chars")
 
                 # Build API call kwargs
                 api_kwargs: Dict[str, Any] = {
@@ -201,10 +201,10 @@ class OpenAIClient(LLMClient):
                     self.total_tokens += usage_dict['total_tokens']
 
                 if self.debug:
-                    print(f"[DEBUG] Response length: {len(response_text)} chars")
-                    print(f"[DEBUG] Finish reason: {finish_reason}")
+                    print(f"Response length: {len(response_text)} chars")
+                    print(f"Finish reason: {finish_reason}")
                     if hasattr(response, 'usage'):
-                        print(f"[DEBUG] Token usage: {response.usage}")
+                        print(f"Token usage: {response.usage}")
 
                 # Check for truncated response
                 if finish_reason == "length":
@@ -215,7 +215,7 @@ class OpenAIClient(LLMClient):
                     )
                     print(f"\n{warning_msg}\n", file=sys.stderr)
                     if self.debug:
-                        print(f"[DEBUG] Response ended with: ...{response_text[-100:]}")
+                        print(f"Response ended with: ...{response_text[-100:]}")
 
                 # Check if response is close to limit (may be cut off)
                 if hasattr(response, 'usage'):
@@ -334,7 +334,7 @@ class OpenAIClient(LLMClient):
                     f.write(f"\n\n{'='*80}\n\n")
 
             if self.debug:
-                print(f"[DEBUG] Dumped prompt to: {filename}")
+                print(f"Dumped prompt to: {filename}")
 
         except Exception as e:
             print(f"Warning: Failed to dump prompt: {e}")
@@ -373,14 +373,14 @@ class OpenAIClient(LLMClient):
                 f.write("\n")
 
             if self.debug:
-                print(f"[DEBUG] Dumped response to: {response_file}")
+                print(f"Dumped response to: {response_file}")
 
             # Dump thinking if present (only in new structure)
             if thinking and thinking_file:
                 with open(thinking_file, 'w') as f:
                     f.write(thinking)
                 if self.debug:
-                    print(f"[DEBUG] Dumped thinking to: {thinking_file}")
+                    print(f"Dumped thinking to: {thinking_file}")
 
             # Dump metadata (only in new structure)
             if metadata_file and stage_name:
@@ -402,7 +402,7 @@ class OpenAIClient(LLMClient):
                 with open(metadata_file, 'w') as f:
                     json.dump(metadata, f, indent=2)
                 if self.debug:
-                    print(f"[DEBUG] Dumped metadata to: {metadata_file}")
+                    print(f"Dumped metadata to: {metadata_file}")
 
         except Exception as e:
             print(f"Warning: Failed to dump response: {e}")

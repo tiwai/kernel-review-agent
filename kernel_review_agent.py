@@ -100,8 +100,11 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
     """
     # Set up instance-specific logging if timestamps enabled
     if args.timestamps:
-        sys.stdout = TimestampedStream(sys.stdout, instance_id=instance_id)
-        sys.stderr = TimestampedStream(sys.stderr, instance_id=instance_id)
+        # Get the original stream (unwrap if already wrapped to avoid double-timestamping)
+        stdout = sys.stdout._stream if hasattr(sys.stdout, '_stream') else sys.stdout
+        stderr = sys.stderr._stream if hasattr(sys.stderr, '_stream') else sys.stderr
+        sys.stdout = TimestampedStream(stdout, instance_id=instance_id)
+        sys.stderr = TimestampedStream(stderr, instance_id=instance_id)
 
     try:
         # Initialize all components for this worker instance

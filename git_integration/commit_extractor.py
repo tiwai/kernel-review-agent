@@ -171,8 +171,8 @@ class CommitExtractor:
             non_empty_lines = [line for line in message.split('\n') if line.strip()]
             if len(non_empty_lines) < 10:
                 if self.debug:
-                    print(f"[DEBUG] Commit has short message ({len(non_empty_lines)} lines) and suse-commit tag")
-                    print(f"[DEBUG] Looking up kernel-source commit: {suse_commit_sha[:12]}")
+                    print(f"Commit has short message ({len(non_empty_lines)} lines) and suse-commit tag")
+                    print(f"Looking up kernel-source commit: {suse_commit_sha[:12]}")
 
                 # Try to extract patch description from kernel-source commit
                 patch_info = self.kernel_source_extractor.extract_patch_from_commit(suse_commit_sha)
@@ -436,7 +436,7 @@ class MultiRepoExtractor:
                 if match:
                     patch_file_path = match.group(1)
                     if self.debug:
-                        print(f"[DEBUG] Found patch file in kernel-source commit: {patch_file_path}")
+                        print(f"Found patch file in kernel-source commit: {patch_file_path}")
                     break
 
             if not patch_file_path:
@@ -500,10 +500,10 @@ class MultiRepoExtractor:
                 full_message = '\n'.join(message_lines) if message_lines else None
 
             if self.debug and (subject or full_message):
-                print(f"[DEBUG] Extracted patch description from {patch_file_path}")
-                print(f"[DEBUG]   Subject: {subject}")
+                print(f"Extracted patch description from {patch_file_path}")
+                print(f"  Subject: {subject}")
                 if git_commit:
-                    print(f"[DEBUG]   Git-commit: {git_commit}")
+                    print(f"  Git-commit: {git_commit}")
 
             return {
                 'subject': subject,

@@ -183,7 +183,7 @@ class ToolEnabledClient(OpenAIClient):
 
         for iteration in range(max_iterations):
             if self.debug:
-                print(f"[DEBUG] Tool-calling iteration {iteration + 1}/{max_iterations}")
+                print(f"Tool-calling iteration {iteration + 1}/{max_iterations}")
 
             # Build API kwargs
             api_kwargs = {
@@ -224,14 +224,14 @@ class ToolEnabledClient(OpenAIClient):
             # Process tool calls
             if message.tool_calls:
                 if self.debug:
-                    print(f"[DEBUG] LLM called {len(message.tool_calls)} tool(s)")
+                    print(f"LLM called {len(message.tool_calls)} tool(s)")
 
                 for tool_call in message.tool_calls:
                     tool_name = tool_call.function.name
                     tool_args = tool_call.function.arguments
 
                     if self.debug:
-                        print(f"[DEBUG]   Tool: {tool_name}({tool_args[:100]}...)")
+                        print(f"  Tool: {tool_name}({tool_args[:100]}...)")
 
                     # Execute tool
                     result = self.execute_tool(tool_name, tool_args)
@@ -244,14 +244,14 @@ class ToolEnabledClient(OpenAIClient):
                     })
 
                     if self.debug:
-                        print(f"[DEBUG]   Result: {len(result)} chars")
+                        print(f"  Result: {len(result)} chars")
 
                 # Continue loop to process tool results
                 continue
 
             # No more tool calls - done
             if self.debug:
-                print(f"[DEBUG] Tool calling finished (reason: {finish_reason})")
+                print(f"Tool calling finished (reason: {finish_reason})")
 
             return message.content or ""
 

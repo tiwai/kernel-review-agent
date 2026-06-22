@@ -244,7 +244,7 @@ If REAL_BUG, provide a one-sentence justification based on the source code you r
             return False
         except Exception as e:
             if self.debug:
-                print(f"[DEBUG] Generic tool verification failed: {e}")
+                print(f"Generic tool verification failed: {e}")
             return True # Keep on error to avoid false negatives from tool failures
 
     def _verify_timer_api_issues(self, commit: Commit, findings: List[Dict]) -> List[Dict]:
@@ -346,7 +346,7 @@ Be concise."""
 
             except Exception as e:
                 if self.debug:
-                    print(f"[DEBUG] Tool verification failed for {callback_name}: {e}")
+                    print(f"Tool verification failed for {callback_name}: {e}")
                 # On error, keep original findings
                 for f in timer_related:
                     if callback_name in f.get('evidence', '') or callback_name in f.get('message', ''):
@@ -474,7 +474,7 @@ Be concise but include the lock trace."""
 
             except Exception as e:
                 if self.debug:
-                    print(f"[DEBUG] Lock verification failed for {func_name}: {e}")
+                    print(f"Lock verification failed for {func_name}: {e}")
                 # On error, keep original finding
                 verified.append(finding)
 
@@ -616,7 +616,7 @@ Be concise but show the trace."""
 
             except Exception as e:
                 if self.debug:
-                    print(f"[DEBUG] UAF verification failed for {var_name}: {e}")
+                    print(f"UAF verification failed for {var_name}: {e}")
                 verified.append(finding)
 
         return verified

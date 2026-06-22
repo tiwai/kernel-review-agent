@@ -57,7 +57,7 @@ class OllamaClient(LLMClient):
         if self.dump_prompts and not os.path.exists(self.dump_dir):
             os.makedirs(self.dump_dir)
             if self.debug:
-                print(f"[DEBUG] Created dump directory: {self.dump_dir}")
+                print(f"Created dump directory: {self.dump_dir}")
 
         try:
             self.client = OpenAI(
@@ -69,9 +69,9 @@ class OllamaClient(LLMClient):
             raise RuntimeError(f"Failed to initialize Ollama client: {e}")
 
         if self.debug:
-            print(f"[DEBUG] Ollama client initialized with timeout: {config.LLM_TIMEOUT}s")
-            print(f"[DEBUG] Server: {self.base_url}")
-            print(f"[DEBUG] Using model: {self.model}")
+            print(f"Ollama client initialized with timeout: {config.LLM_TIMEOUT}s")
+            print(f"Server: {self.base_url}")
+            print(f"Using model: {self.model}")
 
     def analyze_code(
         self,
@@ -152,10 +152,10 @@ class OllamaClient(LLMClient):
 
                 if self.debug:
                     temp_str = f"{temperature}" if temperature is not None else "default"
-                    print(f"[DEBUG] Ollama call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temp_str}")
-                    print(f"[DEBUG] System prompt length: {len(messages[0]['content'])} chars")
+                    print(f"Ollama call #{call_id}: model={self.model}, max_tokens={max_tokens}, temp={temp_str}")
+                    print(f"System prompt length: {len(messages[0]['content'])} chars")
                     if len(messages) > 1:
-                        print(f"[DEBUG] User prompt length: {len(messages[1]['content'])} chars")
+                        print(f"User prompt length: {len(messages[1]['content'])} chars")
 
                 # Build API call kwargs
                 api_kwargs: Dict[str, Any] = {
@@ -188,10 +188,10 @@ class OllamaClient(LLMClient):
                     self.total_tokens += usage_dict['total_tokens']
 
                 if self.debug:
-                    print(f"[DEBUG] Response length: {len(response_text)} chars")
-                    print(f"[DEBUG] Finish reason: {finish_reason}")
+                    print(f"Response length: {len(response_text)} chars")
+                    print(f"Finish reason: {finish_reason}")
                     if hasattr(response, 'usage'):
-                        print(f"[DEBUG] Token usage: {response.usage}")
+                        print(f"Token usage: {response.usage}")
 
                 # Check for truncated response
                 if finish_reason == "length":
@@ -202,7 +202,7 @@ class OllamaClient(LLMClient):
                     )
                     print(f"\n{warning_msg}\n", file=sys.stderr)
                     if self.debug:
-                        print(f"[DEBUG] Response ended with: ...{response_text[-100:]}")
+                        print(f"Response ended with: ...{response_text[-100:]}")
 
                 # Check if response is close to limit (may be cut off)
                 if hasattr(response, 'usage'):
@@ -309,7 +309,7 @@ class OllamaClient(LLMClient):
                     f.write(f"\n\n{'='*80}\n\n")
 
             if self.debug:
-                print(f"[DEBUG] Dumped prompt to: {filename}")
+                print(f"Dumped prompt to: {filename}")
 
         except Exception as e:
             print(f"Warning: Failed to dump prompt: {e}")
@@ -326,7 +326,7 @@ class OllamaClient(LLMClient):
                 f.write("\n")
 
             if self.debug:
-                print(f"[DEBUG] Dumped response to: {filename}")
+                print(f"Dumped response to: {filename}")
 
         except Exception as e:
             print(f"Warning: Failed to dump response: {e}")

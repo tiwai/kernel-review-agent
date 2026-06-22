@@ -200,40 +200,40 @@ class ReviewWorkflow:
         if self.verbose:
             print("[1/5] Gathering context...")
         if self.debug:
-            print(f"[DEBUG] Task 0: Context management")
-            print(f"[DEBUG] Commit SHA: {commit.sha}")
-            print(f"[DEBUG] Files changed: {len(commit.files)}")
-            print(f"[DEBUG] Diff size: {len(commit.diff)} chars")
+            print(f"Task 0: Context management")
+            print(f"Commit SHA: {commit.sha}")
+            print(f"Files changed: {len(commit.files)}")
+            print(f"Diff size: {len(commit.diff)} chars")
 
         context = self._gather_context(commit)
 
         if self.debug:
-            print(f"[DEBUG] Context gathered:")
-            print(f"[DEBUG]   - Changed functions: {context.get('changed_functions', [])}")
-            print(f"[DEBUG]   - Files: {context.get('files', [])}")
+            print(f"Context gathered:")
+            print(f"  - Changed functions: {context.get('changed_functions', [])}")
+            print(f"  - Files: {context.get('files', [])}")
 
         # Match subsystems
         subsystems = self.matcher.match_diff(commit.files, commit.diff)
         if self.verbose and subsystems:
             print(f"      Matched subsystems: {', '.join(subsystems)}")
         if self.debug:
-            print(f"[DEBUG] Subsystems matched: {subsystems}")
+            print(f"Subsystems matched: {subsystems}")
 
         # Task 1: Categorize changes (LLM-driven)
         if self.verbose:
             print("\n[2/5] Categorizing changes...")
         if self.debug:
-            print(f"[DEBUG] Task 1: Categorizing changes")
-            print(f"[DEBUG] Calling LLM for categorization...")
+            print(f"Task 1: Categorizing changes")
+            print(f"Calling LLM for categorization...")
 
         categories = self._categorize_changes(commit, context, commit_output_dir)
 
         if self.verbose:
             print(f"      Found {len(categories)} change categories")
         if self.debug:
-            print(f"[DEBUG] Categories:")
+            print(f"Categories:")
             for cat in categories:
-                print(f"[DEBUG]   - {cat.get('id')}: {cat.get('type')} - {cat.get('description', '')[:60]}")
+                print(f"  - {cat.get('id')}: {cat.get('type')} - {cat.get('description', '')[:60]}")
 
         # Early exit if stop_after == 'categorize'
         if self.stop_after == 'categorize':
@@ -254,18 +254,18 @@ class ReviewWorkflow:
         if self.verbose:
             print("\n[3/5] Analyzing for regressions...")
         if self.debug:
-            print(f"[DEBUG] Task 2: Analyzing for regressions")
-            print(f"[DEBUG] Loading subsystem guides: {subsystems}")
-            print(f"[DEBUG] Calling LLM for regression analysis...")
+            print(f"Task 2: Analyzing for regressions")
+            print(f"Loading subsystem guides: {subsystems}")
+            print(f"Calling LLM for regression analysis...")
 
         findings = self._analyze_regressions(commit, categories, context, subsystems, commit_output_dir)
 
         if self.verbose:
             print(f"      Found {len(findings)} potential issues")
         if self.debug:
-            print(f"[DEBUG] Findings:")
+            print(f"Findings:")
             for i, finding in enumerate(findings):
-                print(f"[DEBUG]   {i+1}. {finding.get('type')}: {finding.get('message', '')[:60]}...")
+                print(f"  {i+1}. {finding.get('type')}: {finding.get('message', '')[:60]}...")
 
         # Early exit if stop_after == 'analyze'
         if self.stop_after == 'analyze':
@@ -289,7 +289,7 @@ class ReviewWorkflow:
             if self.verbose:
                 print("\n[3.5/5] Verifying against upstream...")
             if self.debug:
-                print(f"[DEBUG] Task 2.5: SUSE upstream verification")
+                print(f"Task 2.5: SUSE upstream verification")
 
             suse_verification_result = self.suse_verifier.verify_against_upstream(
                 commit, findings
@@ -307,23 +307,23 @@ class ReviewWorkflow:
                     finding['upstream_status'] = 'downstream_only'
 
             if self.debug:
-                print(f"[DEBUG] SUSE verification complete")
-                print(f"[DEBUG]   Findings in upstream: {len(suse_verification_result.get('findings_in_upstream', []))}")
-                print(f"[DEBUG]   Downstream-only: {len(suse_verification_result.get('findings_only_downstream', []))}")
+                print(f"SUSE verification complete")
+                print(f"  Findings in upstream: {len(suse_verification_result.get('findings_in_upstream', []))}")
+                print(f"  Downstream-only: {len(suse_verification_result.get('findings_only_downstream', []))}")
 
         # Task 3: Verify findings (eliminate false positives)
         if self.skip_verification:
             if self.verbose:
                 print("\n[4/5] Skipping verification (--skip-verification enabled)...")
             if self.debug:
-                print(f"[DEBUG] Task 3: SKIPPED (verification disabled)")
+                print(f"Task 3: SKIPPED (verification disabled)")
             verified = findings
         else:
             if self.verbose:
                 print("\n[4/5] Verifying findings...")
             if self.debug:
-                print(f"[DEBUG] Task 3: Verifying findings")
-                print(f"[DEBUG] Applying false-positive checks to {len(findings)} findings...")
+                print(f"Task 3: Verifying findings")
+                print(f"Applying false-positive checks to {len(findings)} findings...")
 
             verified = self._verify_findings(findings, context, commit, commit_output_dir)
 
@@ -331,18 +331,18 @@ class ReviewWorkflow:
                 print(f"      {len(verified)} issues after verification")
             if self.debug:
                 discarded = len(findings) - len(verified)
-                print(f"[DEBUG] Verification complete: {len(verified)} verified, {discarded} discarded as false positives")
+                print(f"Verification complete: {len(verified)} verified, {discarded} discarded as false positives")
 
         # Task 4: Generate summary
         if self.verbose:
             print("\n[5/5] Generating summary...")
         if self.debug:
-            print(f"[DEBUG] Task 4: Generating summary")
+            print(f"Task 4: Generating summary")
 
         summary = self._generate_summary(commit, verified, suse_verification_result)
 
         if self.debug:
-            print(f"[DEBUG] Summary: {summary}")
+            print(f"Summary: {summary}")
 
         # Task 5 (optional): Propose fix patches
         fix_patches = None
@@ -350,7 +350,7 @@ class ReviewWorkflow:
             if self.verbose:
                 print("\n[+] Proposing fix patches...")
             if self.debug:
-                print(f"[DEBUG] Task 5: Proposing fixes for {len(verified)} finding(s)")
+                print(f"Task 5: Proposing fixes for {len(verified)} finding(s)")
             fix_patches = self._propose_fixes(commit, verified, context, categories)
 
         if self.verbose:
@@ -359,7 +359,7 @@ class ReviewWorkflow:
         # Get token usage from LLM client
         token_usage = self.llm.get_token_usage()
         if self.debug:
-            print(f"[DEBUG] Total token usage - Input: {token_usage['prompt_tokens']}, "
+            print(f"Total token usage - Input: {token_usage['prompt_tokens']}, "
                   f"Output: {token_usage['completion_tokens']}, "
                   f"Total: {token_usage['total_tokens']}")
 
@@ -396,7 +396,7 @@ class ReviewWorkflow:
 
         # Load full source code context for deeper analysis
         if self.debug:
-            print(f"[DEBUG] Loading full source code context...")
+            print(f"Loading full source code context...")
 
         code_loader = CodeContextLoader(commit, verbose=self.verbose, debug=self.debug)
         full_context = code_loader.load_full_context()
@@ -404,8 +404,8 @@ class ReviewWorkflow:
         context["code_context_formatted"] = code_loader.format_context_for_prompt(full_context)
 
         if self.debug:
-            print(f"[DEBUG] Loaded {len(full_context.get('function_definitions', {}))} function definitions")
-            print(f"[DEBUG] Loaded {sum(len(v) for v in full_context.get('callers', {}).values())} caller references")
+            print(f"Loaded {len(full_context.get('function_definitions', {}))} function definitions")
+            print(f"Loaded {sum(len(v) for v in full_context.get('callers', {}).values())} caller references")
 
         return context
 
@@ -1044,10 +1044,10 @@ JSON array (empty [] if false positive):"""
                 else:
                     # If parsing fails for one finding, we err on the side of caution with small models
                     if self.debug:
-                        print(f"[DEBUG] Verification failed to return JSON for finding {i+1}")
+                        print(f"Verification failed to return JSON for finding {i+1}")
             except Exception as e:
                 if self.debug:
-                    print(f"[DEBUG] Error verifying finding {i+1}: {e}")
+                    print(f"Error verifying finding {i+1}: {e}")
                 # On error, we keep it to be safe? Or discard? 
                 # The directive was to reduce false positives, so maybe discard if we can't verify.
                 # But for now, let's keep it to avoid missing real bugs due to transient errors.
@@ -1198,7 +1198,7 @@ Patches:"""
                 preview = '\n'.join(patches.splitlines()[:5])
                 print(f"[WARNING] Proposed fix patches do not look like a valid diff; discarding", file=sys.stderr)
                 if self.debug:
-                    print(f"[DEBUG] Discarded patch content (first lines):\n{preview}", file=sys.stderr)
+                    print(f"Discarded patch content (first lines):\n{preview}", file=sys.stderr)
                 return None
             return patches
         except Exception as e:
