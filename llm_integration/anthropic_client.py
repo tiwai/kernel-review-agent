@@ -268,6 +268,7 @@ class AnthropicClient(LLMClient):
         temperature: Optional[float]
     ):
         """Dump prompt to file for debugging."""
+        os.makedirs(self.dump_dir, exist_ok=True)
         filename = os.path.join(self.dump_dir, f"{call_id:03d}_prompt.txt")
 
         try:
@@ -299,6 +300,7 @@ class AnthropicClient(LLMClient):
 
     def _dump_response(self, call_id: int, response: str):
         """Dump response to file for debugging."""
+        os.makedirs(self.dump_dir, exist_ok=True)
         filename = os.path.join(self.dump_dir, f"{call_id:03d}_response.txt")
 
         try:

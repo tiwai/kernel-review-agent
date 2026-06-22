@@ -310,6 +310,7 @@ class OpenAIClient(LLMClient):
             filename = os.path.join(prompts_dir, f"{stage_name}-prompt.txt")
         else:
             # Fallback to old structure for compatibility
+            os.makedirs(self.dump_dir, exist_ok=True)
             filename = os.path.join(self.dump_dir, f"{call_id:03d}_prompt.txt")
 
         try:
@@ -359,6 +360,7 @@ class OpenAIClient(LLMClient):
             metadata_file = os.path.join(prompts_dir, f"{stage_name}-metadata.json")
         else:
             # Fallback to old structure
+            os.makedirs(self.dump_dir, exist_ok=True)
             response_file = os.path.join(self.dump_dir, f"{call_id:03d}_response.txt")
             thinking_file = None
             metadata_file = None
