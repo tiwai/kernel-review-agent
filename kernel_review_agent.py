@@ -793,16 +793,16 @@ Examples:
 
     # Show debug info if enabled
     if args.debug:
-        print(f"[DEBUG] Configuration:")
-        print(f"[DEBUG]   Install directory: {config.INSTALL_DIR}")
-        print(f"[DEBUG]   Prompts directory: {args.prompts_dir}")
-        print(f"[DEBUG]   LLM: {args.host}:{args.port}")
-        print(f"[DEBUG]   Model: {args.model}")
-        print(f"[DEBUG]   Verbose: {args.verbose}")
-        print(f"[DEBUG]   Debug: {args.debug}")
-        print(f"[DEBUG]   Save prompts: {args.save_prompts}")
-        print(f"[DEBUG]   Skip verification: {args.skip_verification}")
-        print(f"[DEBUG]   Output directory: {args.output_dir}")
+        print(f"Configuration:")
+        print(f"  Install directory: {config.INSTALL_DIR}")
+        print(f"  Prompts directory: {args.prompts_dir}")
+        print(f"  LLM: {args.host}:{args.port}")
+        print(f"  Model: {args.model}")
+        print(f"  Verbose: {args.verbose}")
+        print(f"  Debug: {args.debug}")
+        print(f"  Save prompts: {args.save_prompts}")
+        print(f"  Skip verification: {args.skip_verification}")
+        print(f"  Output directory: {args.output_dir}")
         print()
 
     # Override token limits if --max-tokens specified
@@ -813,7 +813,7 @@ Examples:
         config.VERIFY_MAX_TOKENS = args.max_tokens
 
         if args.debug:
-            print(f"[DEBUG] Token limits overridden to: {args.max_tokens}")
+            print(f"Token limits overridden to: {args.max_tokens}")
             print()
 
     # Override timeout if --timeout specified
@@ -825,19 +825,19 @@ Examples:
 
         if args.debug:
             timeout_str = "disabled" if config.LLM_TIMEOUT is None else f"{config.LLM_TIMEOUT}s"
-            print(f"[DEBUG] LLM timeout: {timeout_str}")
+            print(f"LLM timeout: {timeout_str}")
             print()
 
     # Set Google credentials if specified
     if hasattr(args, 'google_credentials') and args.google_credentials:
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = args.google_credentials
         if args.debug:
-            print(f"[DEBUG]   Google credentials file: {args.google_credentials}")
+            print(f"  Google credentials file: {args.google_credentials}")
 
     # Determine provider
     provider = get_provider_from_args(args)
     if args.debug:
-        print(f"[DEBUG]   Provider: {provider}")
+        print(f"  Provider: {provider}")
 
     # Determine host reset configuration (used for both initial and tool-enabled clients)
     enable_reset = (args.enable_host_reset if hasattr(args, 'enable_host_reset')
@@ -977,7 +977,7 @@ Examples:
                 print(f"Kernel-source commit message enhancement enabled")
         else:
             if args.debug:
-                print(f"[DEBUG] Kernel-source repository not available: {suse_kernel_source}")
+                print(f"Kernel-source repository not available: {suse_kernel_source}")
             kernel_source_extractor = None
 
     # Initialize git commit extractor with kernel-source enhancement
@@ -1005,17 +1005,17 @@ Examples:
                 if args.verbose:
                     print(f"Upstream Linux repository available for backport verification")
                 if args.debug:
-                    print(f"[DEBUG] Upstream repo: {upstream_linux}")
+                    print(f"Upstream repo: {upstream_linux}")
             else:
                 if args.debug:
-                    print(f"[DEBUG] Upstream Linux repository not available: {upstream_linux}")
+                    print(f"Upstream Linux repository not available: {upstream_linux}")
                 upstream_repo_extractor = None
 
         if suse_kernel_source:
             if args.debug:
-                print(f"[DEBUG] Initializing SUSE verifier")
-                print(f"[DEBUG]   kernel-source: {suse_kernel_source}")
-                print(f"[DEBUG]   upstream: {upstream_linux}")
+                print(f"Initializing SUSE verifier")
+                print(f"  kernel-source: {suse_kernel_source}")
+                print(f"  upstream: {upstream_linux}")
 
             from analysis import SuseUpstreamVerifier
             suse_verifier = SuseUpstreamVerifier(
@@ -1045,7 +1045,7 @@ Examples:
             if args.verbose:
                 print("Using hybrid mode: Pre-loaded context + tool calling for enhanced verification")
             if args.debug:
-                print("[DEBUG] Hybrid mode: Tool calling enabled for deep-dive verification\n")
+                print("Hybrid mode: Tool calling enabled for deep-dive verification\n")
 
             # Replace LLM client with tool-enabled version
             git_dir = os.getcwd()
@@ -1054,7 +1054,7 @@ Examples:
                 print(f"Warning: Current directory is not a git repository: {git_dir}", file=sys.stderr)
                 print("Tool-based verification may not work correctly.", file=sys.stderr)
             if args.debug:
-                print(f"[DEBUG] Tool-enabled client git_dir: {git_dir}")
+                print(f"Tool-enabled client git_dir: {git_dir}")
 
             llm = ToolEnabledClient(
                 git_dir=git_dir,
@@ -1447,7 +1447,7 @@ Examples:
                 elapsed_time = time.time() - start_time
 
                 if args.debug:
-                    print(f"[DEBUG] Review completed in {elapsed_time:.2f} seconds")
+                    print(f"Review completed in {elapsed_time:.2f} seconds")
 
                 # Re-evaluate if no issues found and review completed suspiciously fast
                 if args.reevaluate_threshold > 0 and len(result.findings) == 0 and elapsed_time < args.reevaluate_threshold:
@@ -1483,7 +1483,7 @@ Examples:
                     if os.path.exists(old_file):
                         os.remove(old_file)
                         if args.debug:
-                            print(f"[DEBUG] Removed stale file: {old_file}")
+                            print(f"Removed stale file: {old_file}")
 
                 # Generate outputs
                 report_text = formatter.format_report(
@@ -1589,7 +1589,7 @@ Examples:
                 elapsed_time = time.time() - start_time
 
                 if args.debug:
-                    print(f"[DEBUG] Review completed in {elapsed_time:.2f} seconds")
+                    print(f"Review completed in {elapsed_time:.2f} seconds")
 
                 # Re-evaluate if no issues found and review completed suspiciously fast
                 if args.reevaluate_threshold > 0 and len(result.findings) == 0 and elapsed_time < args.reevaluate_threshold:
@@ -1626,7 +1626,7 @@ Examples:
                         if os.path.exists(old_file):
                             os.remove(old_file)
                             if args.debug:
-                                print(f"[DEBUG] Removed stale file: {old_file}")
+                                print(f"Removed stale file: {old_file}")
 
                 # Generate pre-verification metadata if we have pre-verification findings
                 # This saves all information needed to re-verify findings later
