@@ -1355,7 +1355,22 @@ Examples:
                     commit = result['commit']
                     sha_short = commit.sha[:12] if hasattr(commit, 'sha') else 'patch'
 
-                    print(f"✓ {result['item']}: {commit.subject}")
+                    # Calculate ETA for parallel mode
+                    eta_str = ""
+                    if args.verbose and completed_reviews > 0:
+                        avg_time = total_review_time / completed_reviews
+                        # In parallel mode, divide by number of workers for effective speed
+                        remaining_items = total_items - completed_count
+                        if remaining_items > 0:
+                            eta_seconds = (avg_time * remaining_items) / num_workers
+                            eta_minutes = int(eta_seconds / 60)
+                            eta_secs = int(eta_seconds % 60)
+                            if eta_minutes > 0:
+                                eta_str = f" (ETA: {eta_minutes}m {eta_secs}s)"
+                            else:
+                                eta_str = f" (ETA: {eta_secs}s)"
+
+                    print(f"✓ [{completed_count}/{total_items}] {result['item']}: {commit.subject}{eta_str}")
                     print(f"  Issues found: {result['findings']}")
                     print(f"  Severity: {result['severity']}")
                     print(f"  Report: {result['report_path']}")
@@ -1370,7 +1385,7 @@ Examples:
                     completed_count += 1
                     failed_items.append(result['item'])
 
-                    print(f"✗ Error processing {result['item']}: {result['error']}", file=sys.stderr)
+                    print(f"✗ [{completed_count}/{total_items}] Error processing {result['item']}: {result['error']}", file=sys.stderr)
                     print()
 
                 elif result['status'] == 'skipped':
@@ -1378,7 +1393,7 @@ Examples:
                     completed_count += 1
 
                     if args.verbose:
-                        print(f"⊘ Skipped {result['item']}: {result.get('reason', 'unknown')}")
+                        print(f"⊘ [{completed_count}/{total_items}] Skipped {result['item']}: {result.get('reason', 'unknown')}")
 
             except:
                 # Timeout or other queue exception

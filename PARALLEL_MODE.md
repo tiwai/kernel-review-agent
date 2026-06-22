@@ -27,11 +27,26 @@ When using `--timestamps`, each log line is prefixed with both the instance numb
 ```
 [1][15:30:45] Processing commit abc123...
 [2][15:30:46] Processing commit def456...
-[1][15:31:02] ✓ Commit abc123: Fix memory leak
-[2][15:31:05] ✓ Commit def456: Add new feature
+[1][15:31:02] ✓ [1/10] Commit abc123: Fix memory leak (ETA: 2m 15s)
+[2][15:31:05] ✓ [2/10] Commit def456: Add new feature (ETA: 2m 10s)
 ```
 
 This helps track which instance is processing which commit.
+
+## Progress and ETA
+
+In parallel mode with `--verbose`:
+- Progress is shown as `[completed/total]` for each result
+- ETA is calculated based on average review time divided by number of workers
+- ETA accounts for parallelism (e.g., with 2 workers, ETA is half the sequential time)
+
+Example output:
+```
+✓ [5/20] abc123def: Fix memory leak (ETA: 1m 30s)
+  Issues found: 2
+  Severity: low
+  Report: ./reviews/ab/abc123.../review-inline.txt
+```
 
 ## Host Reset Synchronization
 
