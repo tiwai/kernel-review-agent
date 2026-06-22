@@ -11,14 +11,21 @@ import sys
 import os
 import time
 from datetime import datetime
+import multiprocessing
+import threading
+try:
+    from queue import Empty
+except ImportError:
+    from Queue import Empty  # Python 2 compatibility
 
 
 class TimestampedStream:
     """Wraps a stream and prepends HH:MM:SS to every line."""
 
-    def __init__(self, stream):
+    def __init__(self, stream, instance_id=None):
         self._stream = stream
         self._at_line_start = True
+        self._instance_id = instance_id
 
     def write(self, data):
         if not data:
@@ -26,6 +33,8 @@ class TimestampedStream:
         output = []
         for ch in data:
             if self._at_line_start and ch != '\n':
+                if self._instance_id is not None:
+                    output.append(f'[{self._instance_id}]')
                 output.append(datetime.now().strftime('[%H:%M:%S] '))
                 self._at_line_start = False
             output.append(ch)
@@ -75,6 +84,297 @@ from prompt_management import PromptLoader, SubsystemMatcher
 from prompt_management.prompt_set_mapper import PromptSetMapper
 from analysis import ReviewWorkflow, HybridReviewWorkflow
 from output import ReportFormatter, MetadataGenerator
+
+
+def process_commit_worker(instance_id, work_queue, results_queue, args, host_reset_event, stop_event):
+    """
+    Worker process for parallel commit processing.
+
+    Args:
+        instance_id: Instance number for logging
+        work_queue: Queue containing items to process (commits or patches)
+        results_queue: Queue to put results into
+        args: Parsed command-line arguments
+        host_reset_event: Event to signal host reset is needed
+        stop_event: Event to signal workers should stop
+    """
+    # Set up instance-specific logging if timestamps enabled
+    if args.timestamps:
+        sys.stdout = TimestampedStream(sys.stdout, instance_id=instance_id)
+        sys.stderr = TimestampedStream(sys.stderr, instance_id=instance_id)
+
+    try:
+        # Initialize all components for this worker instance
+        # (Same initialization as in main(), but per-worker)
+        provider = get_provider_from_args(args)
+
+        # Initialize LLM client
+        provider_kwargs = {
+            'model': args.model,
+            'verbose': args.verbose,
+            'debug': args.debug,
+            'dump_prompts': args.save_prompts,
+        }
+
+        if provider == 'openai':
+            provider_kwargs.update({
+                'host': args.host,
+                'port': args.port,
+                'api_key': args.api_key,
+            })
+            if args.reasoning_effort:
+                provider_kwargs['reasoning_effort'] = args.reasoning_effort
+        elif provider == 'ollama':
+            provider_kwargs.update({
+                'host': args.host,
+                'port': args.port,
+            })
+            if args.reasoning_effort:
+                provider_kwargs['reasoning_effort'] = args.reasoning_effort
+        elif provider == 'anthropic':
+            if args.anthropic_api_key:
+                provider_kwargs['api_key'] = args.anthropic_api_key
+        elif provider == 'anthropic-vertex':
+            if args.google_project:
+                provider_kwargs['project_id'] = args.google_project
+            if args.google_location:
+                provider_kwargs['location'] = args.google_location
+        elif provider == 'google':
+            if args.google_project:
+                provider_kwargs['project_id'] = args.google_project
+            if args.google_location:
+                provider_kwargs['location'] = args.google_location
+
+        llm = create_llm_client(provider=provider, **provider_kwargs)
+
+        # Wrap with resilient client if host reset enabled
+        enable_reset = (args.enable_host_reset if hasattr(args, 'enable_host_reset')
+                        else config.ENABLE_HOST_RESET)
+
+        if enable_reset:
+            from llm_integration.resilient_client import ResilientLLMClient
+
+            factory_kwargs = provider_kwargs.copy()
+            factory_kwargs['provider'] = provider
+
+            fallback_model = None
+            max_attempts = 0
+
+            if hasattr(args, 'host_reset_model') and args.host_reset_model:
+                fallback_model = args.host_reset_model
+            elif config.HOST_RESET_FALLBACK_MODEL:
+                fallback_model = config.HOST_RESET_FALLBACK_MODEL
+
+            max_attempts = (args.host_reset_max_attempts
+                           if hasattr(args, 'host_reset_max_attempts')
+                           else config.HOST_RESET_MAX_ATTEMPTS)
+
+            llm = ResilientLLMClient(
+                wrapped_client=llm,
+                enable_reset=True,
+                fallback_model=fallback_model,
+                max_reset_attempts=max_attempts,
+                **factory_kwargs
+            )
+
+        # Initialize prompt loader
+        _config = config.load_configuration()
+        config_overrides = _config.get('CUSTOM_MODEL_TO_PROMPT_SET', {})
+
+        prompts = PromptLoader(
+            prompts_dir=args.prompts_dir,
+            prompt_set=args.prompt_set,
+            model_name=args.model,
+            config_overrides=config_overrides
+        )
+
+        matcher = SubsystemMatcher(prompts_dir=args.prompts_dir, prompt_loader=prompts)
+
+        # Initialize git extractor
+        git = CommitExtractor(verbose=args.verbose, debug=args.debug)
+
+        # Initialize workflow
+        if args.enable_tools:
+            git_dir = os.getcwd()
+            llm = ToolEnabledClient(
+                git_dir=git_dir,
+                host=args.host,
+                port=args.port,
+                api_key=args.api_key,
+                model=args.model,
+                verbose=args.verbose,
+                debug=args.debug,
+                dump_prompts=args.save_prompts,
+                reasoning_effort=args.reasoning_effort or None
+            )
+
+            if enable_reset:
+                from llm_integration.resilient_client import ResilientLLMClient
+                llm = ResilientLLMClient(
+                    wrapped_client=llm,
+                    enable_reset=True,
+                    fallback_model=fallback_model,
+                    max_reset_attempts=max_attempts,
+                    **factory_kwargs
+                )
+
+            workflow = HybridReviewWorkflow(
+                llm, prompts, matcher,
+                verbose=args.verbose,
+                debug=args.debug,
+                skip_verification=args.skip_verification,
+                suse_verifier=None,  # TODO: pass if needed
+                enable_tools=True,
+                upstream_repo=None,
+                propose_fixes=args.propose_fixes,
+                max_tool_iterations=args.max_tool_iterations,
+                stop_after=args.stop_after
+            )
+        else:
+            workflow = ReviewWorkflow(
+                llm, prompts, matcher,
+                verbose=args.verbose,
+                debug=args.debug,
+                skip_verification=args.skip_verification,
+                suse_verifier=None,
+                propose_fixes=args.propose_fixes,
+                max_tool_iterations=args.max_tool_iterations,
+                stop_after=args.stop_after
+            )
+
+        formatter = ReportFormatter()
+        metadata_gen = MetadataGenerator()
+
+        # Process items from queue
+        while not stop_event.is_set():
+            try:
+                # Get next item with timeout
+                item_data = work_queue.get(timeout=0.5)
+                if item_data is None:  # Sentinel to stop
+                    break
+
+                item_idx, item_ref, is_patch = item_data
+
+                try:
+                    # Process the commit or patch
+                    if is_patch:
+                        # Process patch file
+                        patch_file = item_ref
+                        if not os.path.exists(patch_file):
+                            results_queue.put({
+                                'status': 'failed',
+                                'item': patch_file,
+                                'error': f"Patch file not found: {patch_file}"
+                            })
+                            continue
+
+                        commit = git.from_patch_file(patch_file)
+                        commit_dir = args.output_dir
+                    else:
+                        # Process commit
+                        commit = git.get_commit(item_ref)
+
+                        # Skip merge commits
+                        if len(commit.diff.split('\n')) < 5 or "Merge:" in commit.message:
+                            results_queue.put({
+                                'status': 'skipped',
+                                'item': item_ref,
+                                'reason': 'merge commit'
+                            })
+                            continue
+
+                        sha_short = commit.sha[:12]
+                        commit_dir = os.path.join(args.output_dir, commit.sha[:2], commit.sha)
+
+                        # Check if already processed
+                        if not args.force and os.path.exists(commit_dir):
+                            results_queue.put({
+                                'status': 'skipped',
+                                'item': item_ref,
+                                'reason': 'already processed'
+                            })
+                            continue
+
+                    # Execute review
+                    start_time = time.time()
+                    result = workflow.execute_review(commit, commit_output_dir=commit_dir)
+                    elapsed_time = time.time() - start_time
+
+                    # Create output directory
+                    os.makedirs(commit_dir, exist_ok=True)
+
+                    # Generate outputs
+                    report_text = formatter.format_report(
+                        commit, result.findings,
+                        summary=result.summary,
+                        suse_verification=result.suse_verification,
+                        elapsed_time=elapsed_time,
+                        is_patch=is_patch,
+                        model_name=args.model,
+                        input_tokens=result.input_tokens,
+                        output_tokens=result.output_tokens
+                    )
+                    metadata = metadata_gen.generate(
+                        commit, result.findings,
+                        elapsed_time=elapsed_time,
+                        is_patch=is_patch,
+                        model_name=args.model,
+                        input_tokens=result.input_tokens,
+                        output_tokens=result.output_tokens
+                    )
+
+                    # Write outputs
+                    report_path = os.path.join(commit_dir, "review-inline.txt")
+                    metadata_path = os.path.join(commit_dir, "review-metadata.json")
+
+                    with open(report_path, 'w') as f:
+                        f.write(report_text)
+                    metadata_gen.save_json(metadata, metadata_path)
+
+                    # Write fix patches if any
+                    if result.fix_patches:
+                        fix_path = os.path.join(commit_dir, "review-fix-patches.diff")
+                        with open(fix_path, 'w') as f:
+                            f.write(result.fix_patches)
+
+                    # Report success
+                    results_queue.put({
+                        'status': 'success',
+                        'item': item_ref,
+                        'commit': commit,
+                        'findings': len(result.findings),
+                        'severity': metadata['issue-severity-score'],
+                        'elapsed_time': elapsed_time,
+                        'report_path': report_path,
+                        'metadata_path': metadata_path
+                    })
+
+                except Exception as e:
+                    # Check if it's a host error that requires reset
+                    from llm_integration.error_detector import is_fatal_host_error
+                    if is_fatal_host_error(e):
+                        host_reset_event.set()
+                        # Re-queue the item for retry after reset
+                        work_queue.put(item_data)
+
+                    results_queue.put({
+                        'status': 'failed',
+                        'item': item_ref,
+                        'error': str(e)
+                    })
+
+            except Empty:
+                continue
+            except Exception as e:
+                if args.debug:
+                    import traceback
+                    traceback.print_exc()
+                break
+
+    except Exception as e:
+        if args.debug:
+            import traceback
+            traceback.print_exc()
 
 
 def list_prompt_sets(prompts_dir: str):
@@ -141,6 +441,9 @@ Examples:
 
   # Review commits from a list file
   %(prog)s --list commits.txt --output-dir ./reviews/
+
+  # Review commits in parallel (2x speed with 2 instances)
+  %(prog)s --list commits.txt --parallel 2 --output-dir ./reviews/
 
   # Generate list with: git log --pretty=oneline > commits.txt
   # List format: one commit per line, first column is commit ID
@@ -396,6 +699,13 @@ Examples:
         action="store_true",
         default=config.TIMESTAMPS,
         help="Prefix each output line with a timestamp (HH:MM:SS)"
+    )
+
+    parser.add_argument(
+        "--parallel",
+        type=int,
+        metavar="NUM",
+        help="Run NUM instances in parallel for the same model (default: 1, sequential)"
     )
 
     args = parser.parse_args()
@@ -962,8 +1272,134 @@ Examples:
     completed_reviews = 0
     overall_start_time = time.time()
 
+    # Check if parallel processing is requested
+    if args.parallel and args.parallel > 1:
+        # Parallel processing mode
+        num_workers = args.parallel
+
+        if args.verbose:
+            print(f"Running in parallel mode with {num_workers} instances\n")
+
+        # Create multiprocessing queues
+        work_queue = multiprocessing.Queue()
+        results_queue = multiprocessing.Queue()
+        host_reset_event = multiprocessing.Event()
+        stop_event = multiprocessing.Event()
+
+        # Populate work queue
+        for idx, item in enumerate(items_to_process):
+            work_queue.put((idx, item, args.patch))
+
+        # Add sentinel values to signal workers to stop
+        for _ in range(num_workers):
+            work_queue.put(None)
+
+        # Start worker processes
+        workers = []
+        for i in range(num_workers):
+            worker = multiprocessing.Process(
+                target=process_commit_worker,
+                args=(i + 1, work_queue, results_queue, args, host_reset_event, stop_event)
+            )
+            worker.start()
+            workers.append(worker)
+
+        # Monitor workers and collect results
+        completed_count = 0
+        while completed_count < total_items:
+            try:
+                # Check for host reset event
+                if host_reset_event.is_set():
+                    if args.verbose:
+                        print("\n⚠ Host reset required - synchronizing all instances...")
+
+                    # Signal all workers to stop
+                    stop_event.set()
+
+                    # Wait for all workers to finish with timeout
+                    for worker in workers:
+                        worker.join(timeout=30)
+                        if worker.is_alive():
+                            worker.terminate()
+
+                    # Perform host reset (placeholder - actual reset logic depends on provider)
+                    if args.verbose:
+                        print("Performing host reset...")
+                    time.sleep(2)  # Give the host time to reset
+
+                    # Clear events
+                    host_reset_event.clear()
+                    stop_event.clear()
+
+                    # Restart workers
+                    workers = []
+                    for i in range(num_workers):
+                        worker = multiprocessing.Process(
+                            target=process_commit_worker,
+                            args=(i + 1, work_queue, results_queue, args, host_reset_event, stop_event)
+                        )
+                        worker.start()
+                        workers.append(worker)
+
+                    if args.verbose:
+                        print("All instances restarted\n")
+                    continue
+
+                # Get result with timeout
+                result = results_queue.get(timeout=1.0)
+
+                if result['status'] == 'success':
+                    successful += 1
+                    completed_count += 1
+
+                    commit = result['commit']
+                    sha_short = commit.sha[:12] if hasattr(commit, 'sha') else 'patch'
+
+                    print(f"✓ {result['item']}: {commit.subject}")
+                    print(f"  Issues found: {result['findings']}")
+                    print(f"  Severity: {result['severity']}")
+                    print(f"  Report: {result['report_path']}")
+                    print(f"  Metadata: {result['metadata_path']}")
+                    print()
+
+                    total_review_time += result['elapsed_time']
+                    completed_reviews += 1
+
+                elif result['status'] == 'failed':
+                    failed += 1
+                    completed_count += 1
+                    failed_items.append(result['item'])
+
+                    print(f"✗ Error processing {result['item']}: {result['error']}", file=sys.stderr)
+                    print()
+
+                elif result['status'] == 'skipped':
+                    skipped += 1
+                    completed_count += 1
+
+                    if args.verbose:
+                        print(f"⊘ Skipped {result['item']}: {result.get('reason', 'unknown')}")
+
+            except:
+                # Timeout or other queue exception
+                # Check if all workers are dead
+                all_dead = all(not worker.is_alive() for worker in workers)
+                if all_dead:
+                    break
+                continue
+
+        # Wait for all workers to finish
+        for worker in workers:
+            worker.join(timeout=5)
+            if worker.is_alive():
+                worker.terminate()
+
+        if args.verbose:
+            print("All workers completed\n")
+
+    # Sequential processing mode (original behavior)
     # Patch mode: process patch files
-    if args.patch:
+    elif args.patch:
         for i, patch_file in enumerate(items_to_process, 1):
             try:
                 # Parse patch file
