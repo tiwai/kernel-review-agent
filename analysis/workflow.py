@@ -563,11 +563,25 @@ class ReviewWorkflow:
 
         return result
 
-    def _reformat_as_json(self, prose_response: str, schema_example: str, max_tokens: int = 4096) -> Optional[str]:
+    def _reformat_as_json(
+        self,
+        prose_response: str,
+        schema_example: str,
+        max_tokens: int = 4096,
+        stage_name: Optional[str] = None,
+        commit_output_dir: Optional[str] = None
+    ) -> Optional[str]:
         """
         Fallback: ask the model to reformat a prose response as a JSON array.
         Used when the primary call returns prose instead of JSON.
         Uses a minimal system prompt to avoid the conflicting OUTPUT FORMAT instructions.
+
+        Args:
+            prose_response: The prose response to reformat
+            schema_example: Example JSON schema for the expected format
+            max_tokens: Maximum tokens for the reformatting response
+            stage_name: Original stage name (will be prefixed with "reformat-")
+            commit_output_dir: Output directory for prompt dumping
         """
         if self.verbose or self.debug:
             print("[WARNING] Retrying with JSON reformatter...", file=sys.stderr)
@@ -585,11 +599,13 @@ class ReviewWorkflow:
             f"JSON array:"
         )
         try:
+            # Use reformat-{stage} as the stage name for prompt dumping
+            reformat_stage = f"reformat-{stage_name}" if stage_name else None
             response = self.llm.analyze_code(
                 system_prompt,
                 user_prompt,
-                stage_name=None,  # Reformatting is internal, no stage
-                commit_output_dir=None,
+                stage_name=reformat_stage,
+                commit_output_dir=commit_output_dir,
                 max_tokens=max_tokens
             )
             return self._extract_json_array(response)
@@ -689,7 +705,13 @@ JSON array:"""
                     print("[WARNING] No JSON array found in categorization response", file=sys.stderr)
                     print(f"[WARNING] Response preview: {response[:200]}...", file=sys.stderr)
                 schema = '[{{"id": "CHANGE-1", "type": "...", "description": "...", "location": "..."}}]'
-                json_str = self._reformat_as_json(response, schema, max_tokens=config.CATEGORIZE_MAX_TOKENS)
+                json_str = self._reformat_as_json(
+                    response,
+                    schema,
+                    max_tokens=config.CATEGORIZE_MAX_TOKENS,
+                    stage_name="categorize",
+                    commit_output_dir=commit_output_dir
+                )
                 if json_str is not None:
                     try:
                         categories = json.loads(self._sanitize_json_string(json_str))
@@ -839,7 +861,13 @@ JSON array:"""
                     print("[WARNING] No JSON array found in regression analysis response", file=sys.stderr)
                     print(f"[WARNING] Response preview: {response[:200]}...", file=sys.stderr)
                 schema = '[{{"category": "CHANGE-1", "type": "...", "message": "...", "evidence": "...", "severity": "..."}}]'
-                json_str = self._reformat_as_json(response, schema, max_tokens=config.ANALYZE_MAX_TOKENS)
+                json_str = self._reformat_as_json(
+                    response,
+                    schema,
+                    max_tokens=config.ANALYZE_MAX_TOKENS,
+                    stage_name="analyze",
+                    commit_output_dir=commit_output_dir
+                )
                 if json_str is not None:
                     try:
                         findings = json.loads(self._sanitize_json_string(json_str))
