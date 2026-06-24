@@ -326,6 +326,24 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                         output_tokens=result.output_tokens
                     )
 
+                    # Generate pre-verification metadata if we have pre-verification findings
+                    # This saves all information needed to re-verify findings later
+                    if result.pre_verification_findings and len(result.pre_verification_findings) > 0:
+                        pre_verification_metadata = metadata_gen.generate_pre_verification_metadata(
+                            commit,
+                            result.pre_verification_findings,
+                            suse_verification=result.suse_verification,
+                            categories=result.categories,
+                            subsystems=result.subsystems_loaded,
+                            code_context_formatted=result.code_context_formatted
+                        )
+
+                        pre_verify_path = os.path.join(commit_dir, "review-pre-verification.json")
+                        metadata_gen.save_json(pre_verification_metadata, pre_verify_path)
+
+                        if args.verbose:
+                            print(f"  Pre-verification findings saved: {pre_verify_path}")
+
                     # Write outputs
                     report_path = os.path.join(commit_dir, "review-inline.txt")
                     metadata_path = os.path.join(commit_dir, "review-metadata.json")
