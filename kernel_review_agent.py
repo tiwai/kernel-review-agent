@@ -193,6 +193,19 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
 
         matcher = SubsystemMatcher(prompts_dir=args.prompts_dir, prompt_loader=prompts)
 
+        # Initialize upstream repo extractor for backport verification
+        upstream_repo_extractor = None
+        if not getattr(args, 'patch', False):
+            upstream_linux = getattr(args, 'upstream_linux', None) or config.UPSTREAM_LINUX_REPO
+            if upstream_linux:
+                upstream_repo_extractor = MultiRepoExtractor(
+                    repo_path=upstream_linux,
+                    verbose=args.verbose,
+                    debug=args.debug
+                )
+                if not upstream_repo_extractor.is_available():
+                    upstream_repo_extractor = None
+
         # Initialize git extractor
         git = CommitExtractor(verbose=args.verbose, debug=args.debug)
 
@@ -228,7 +241,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                 skip_verification=args.skip_verification,
                 suse_verifier=None,  # TODO: pass if needed
                 enable_tools=True,
-                upstream_repo=None,
+                upstream_repo=upstream_repo_extractor,
                 propose_fixes=args.propose_fixes,
                 max_tool_iterations=args.max_tool_iterations,
                 stop_after=args.stop_after
