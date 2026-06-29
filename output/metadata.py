@@ -16,7 +16,8 @@ class MetadataGenerator:
         is_patch: bool = False,
         model_name: str = None,
         input_tokens: int = None,
-        output_tokens: int = None
+        output_tokens: int = None,
+        backport_comparison=None
     ) -> Dict:
         """
         Generate metadata JSON.
@@ -71,6 +72,18 @@ class MetadataGenerator:
         # Include upstream commit if present
         if commit.upstream_commit:
             metadata["upstream-commit"] = commit.upstream_commit
+
+        # Include backport comparison results if Phase 0 ran
+        if backport_comparison and backport_comparison.has_upstream:
+            metadata["backport-verification"] = {
+                "differences-found": backport_comparison.differences_found,
+                "needs-deep-review": backport_comparison.needs_deep_review,
+                "summary": backport_comparison.summary,
+                "line-number-shifts": len(backport_comparison.line_number_shifts),
+                "context-mismatches": len(backport_comparison.context_mismatches),
+                "missing-hunks": len(backport_comparison.missing_hunks),
+                "extra-hunks": len(backport_comparison.extra_hunks),
+            }
 
         return metadata
 

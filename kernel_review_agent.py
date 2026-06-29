@@ -180,6 +180,13 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                 **factory_kwargs
             )
 
+        # Apply --max-tokens override to config module (worker has fresh import)
+        if getattr(args, 'max_tokens', None):
+            config.DEFAULT_MAX_TOKENS = args.max_tokens
+            config.CATEGORIZE_MAX_TOKENS = args.max_tokens
+            config.ANALYZE_MAX_TOKENS = args.max_tokens
+            config.VERIFY_MAX_TOKENS = args.max_tokens
+
         # Initialize prompt loader
         _config = config.load_configuration()
         config_overrides = _config.get('CUSTOM_MODEL_TO_PROMPT_SET', {})
@@ -341,6 +348,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                         commit, result.findings,
                         summary=result.summary,
                         suse_verification=result.suse_verification,
+                        backport_comparison=result.backport_comparison,
                         elapsed_time=elapsed_time,
                         is_patch=is_patch,
                         model_name=args.model,
@@ -353,7 +361,8 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                         is_patch=is_patch,
                         model_name=args.model,
                         input_tokens=result.input_tokens,
-                        output_tokens=result.output_tokens
+                        output_tokens=result.output_tokens,
+                        backport_comparison=result.backport_comparison
                     )
 
                     # Generate pre-verification metadata if we have pre-verification findings
@@ -1542,6 +1551,7 @@ Examples:
                     result.findings,
                     summary=result.summary,
                     suse_verification=result.suse_verification,
+                    backport_comparison=result.backport_comparison,
                     elapsed_time=elapsed_time,
                     is_patch=True,  # Flag for patch mode formatting
                     model_name=args.model,
@@ -1554,7 +1564,8 @@ Examples:
                     is_patch=True,
                     model_name=args.model,
                     input_tokens=result.input_tokens,
-                    output_tokens=result.output_tokens
+                    output_tokens=result.output_tokens,
+                    backport_comparison=result.backport_comparison
                 )
 
                 # Write output files to output directory (flat structure for patches)
@@ -1703,6 +1714,7 @@ Examples:
                     result.findings,
                     summary=result.summary,
                     suse_verification=result.suse_verification,
+                    backport_comparison=result.backport_comparison,
                     elapsed_time=elapsed_time,
                     model_name=args.model,
                     input_tokens=result.input_tokens,
@@ -1713,7 +1725,8 @@ Examples:
                     elapsed_time=elapsed_time,
                     model_name=args.model,
                     input_tokens=result.input_tokens,
-                    output_tokens=result.output_tokens
+                    output_tokens=result.output_tokens,
+                    backport_comparison=result.backport_comparison
                 )
 
                 # Write output files to commit directory

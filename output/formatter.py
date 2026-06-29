@@ -24,6 +24,7 @@ class ReportFormatter:
         findings: List[Dict],
         summary: str = None,
         suse_verification: Dict = None,
+        backport_comparison=None,
         elapsed_time: float = None,
         is_patch: bool = False,
         model_name: str = None,
@@ -89,6 +90,17 @@ class ReportFormatter:
                 lines.append(f"Findings-in-upstream: {findings_in_upstream}")
                 lines.append(f"Findings-downstream-only: {findings_downstream}")
 
+            lines.append("")
+
+        # Backport comparison results (if Phase 0 ran)
+        if backport_comparison and backport_comparison.has_upstream:
+            lines.append(f"Backport-verification: {backport_comparison.summary}")
+            if backport_comparison.needs_deep_review:
+                lines.append("Backport-status: NEEDS DEEP REVIEW")
+            elif backport_comparison.differences_found:
+                lines.append("Backport-status: minor differences")
+            else:
+                lines.append("Backport-status: clean")
             lines.append("")
 
         # Summary (if provided or generate default)
