@@ -193,6 +193,19 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
 
         matcher = SubsystemMatcher(prompts_dir=args.prompts_dir, prompt_loader=prompts)
 
+        # Initialize kernel-source extractor for commit message enhancement
+        kernel_source_extractor = None
+        if not getattr(args, 'patch', False):
+            suse_kernel_source = getattr(args, 'suse_kernel_source', None) or config.SUSE_KERNEL_SOURCE_REPO
+            if suse_kernel_source:
+                kernel_source_extractor = MultiRepoExtractor(
+                    repo_path=suse_kernel_source,
+                    verbose=args.verbose,
+                    debug=args.debug
+                )
+                if not kernel_source_extractor.is_available():
+                    kernel_source_extractor = None
+
         # Initialize upstream repo extractor for backport verification
         upstream_repo_extractor = None
         if not getattr(args, 'patch', False):
@@ -207,7 +220,11 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                     upstream_repo_extractor = None
 
         # Initialize git extractor
-        git = CommitExtractor(verbose=args.verbose, debug=args.debug)
+        git = CommitExtractor(
+            verbose=args.verbose,
+            debug=args.debug,
+            kernel_source_extractor=kernel_source_extractor
+        )
 
         # Initialize workflow
         if args.enable_tools:
