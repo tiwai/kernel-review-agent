@@ -123,6 +123,29 @@ class CommitExtractor:
 
         return commits
 
+    def _is_oversized_commit(self, sha: str) -> tuple:
+        """
+        Check if a commit is too large for direct review using --shortstat.
+
+        Returns:
+            Tuple of (is_oversized, file_count, line_count)
+        """
+        try:
+            stat = self._run_git(['show', '--shortstat', '--format=', sha])
+            files_match = re.search(r'(\d+) files? changed', stat)
+            ins_match = re.search(r'(\d+) insertions?', stat)
+            del_match = re.search(r'(\d+) deletions?', stat)
+
+            file_count = int(files_match.group(1)) if files_match else 0
+            ins_count = int(ins_match.group(1)) if ins_match else 0
+            del_count = int(del_match.group(1)) if del_match else 0
+            line_count = ins_count + del_count
+
+            is_oversized = file_count > 1000 or line_count > 10000
+            return is_oversized, file_count, line_count
+        except Exception:
+            return False, 0, 0
+
     def get_commit(self, ref: str) -> Commit:
         """
         Extract commit metadata and diff.
@@ -155,40 +178,62 @@ class CommitExtractor:
         message_match = re.search(r'\n\n(.*)', output, re.DOTALL)
         message = message_match.group(1).strip() if message_match else ""
 
-        # Get diff
-        diff = self._run_git(['show', '--format=', sha])
-
-        # Extract changed files from diff
-        files = self._extract_files_from_diff(diff)
-
-        # Extract SUSE tags if present
+        # Extract SUSE tags early — needed before deciding how to get the diff
         suse_commit_sha = self.extract_tag(message, 'suse-commit')
         git_commit_sha = self.extract_tag(message, 'Git-commit')
 
-        # Try to enhance commit message from kernel-source patch if applicable
+        # Check if commit is too large to review directly, and fall back to
+        # the kernel-source patch when a suse-commit tag is available.
+        diff = None
         if self.kernel_source_extractor and suse_commit_sha:
-            # Check if message is short (< 10 non-empty lines)
-            non_empty_lines = [line for line in message.split('\n') if line.strip()]
-            if len(non_empty_lines) < 10:
-                if self.debug:
-                    print(f"Commit has short message ({len(non_empty_lines)} lines) and suse-commit tag")
-                    print(f"Looking up kernel-source commit: {suse_commit_sha[:12]}")
+            is_oversized, file_count, line_count = self._is_oversized_commit(sha)
+            if is_oversized:
+                if self.verbose:
+                    print(f"  Commit {sha[:12]} is too large to review directly "
+                          f"({file_count} files, {line_count} lines). "
+                          f"Using kernel-source patch from suse-commit {suse_commit_sha[:12]}.")
 
-                # Try to extract patch description from kernel-source commit
                 patch_info = self.kernel_source_extractor.extract_patch_from_commit(suse_commit_sha)
-
-                if patch_info and patch_info.get('message'):
-                    if self.verbose:
-                        print(f"  Enhanced commit message from kernel-source patch")
-
-                    # Use patch description instead of downstream commit message
+                if patch_info and patch_info.get('patch_content'):
+                    diff = patch_info['patch_content']
+                    files = self._extract_files_from_diff(diff)
                     if patch_info.get('subject'):
                         subject = patch_info['subject']
                     if patch_info.get('message'):
                         message = patch_info['message']
-                    # Use Git-commit from patch if available and not already set
                     if patch_info.get('git_commit') and not git_commit_sha:
                         git_commit_sha = patch_info['git_commit']
+                else:
+                    if self.verbose:
+                        print(f"  No patch content found in kernel-source commit; skipping diff.")
+                    diff = ""
+                    files = []
+
+        if diff is None:
+            # Get diff normally
+            diff = self._run_git(['show', '--format=', sha])
+            files = self._extract_files_from_diff(diff)
+
+            # Try to enhance commit message from kernel-source patch if applicable
+            if self.kernel_source_extractor and suse_commit_sha:
+                non_empty_lines = [line for line in message.split('\n') if line.strip()]
+                if len(non_empty_lines) < 10:
+                    if self.debug:
+                        print(f"Commit has short message ({len(non_empty_lines)} lines) and suse-commit tag")
+                        print(f"Looking up kernel-source commit: {suse_commit_sha[:12]}")
+
+                    patch_info = self.kernel_source_extractor.extract_patch_from_commit(suse_commit_sha)
+
+                    if patch_info and patch_info.get('message'):
+                        if self.verbose:
+                            print(f"  Enhanced commit message from kernel-source patch")
+
+                        if patch_info.get('subject'):
+                            subject = patch_info['subject']
+                        if patch_info.get('message'):
+                            message = patch_info['message']
+                        if patch_info.get('git_commit') and not git_commit_sha:
+                            git_commit_sha = patch_info['git_commit']
 
         return Commit(
             sha=sha,
@@ -203,13 +248,26 @@ class CommitExtractor:
         )
 
     def _extract_files_from_diff(self, diff: str) -> List[str]:
-        """Extract list of changed files from unified diff."""
+        """Extract list of changed files from unified diff or patch format."""
         files = []
         for line in diff.split('\n'):
-            # Look for diff --git a/path b/path lines
+            # Standard git diff header: diff --git a/path b/path
             match = re.match(r'^diff --git a/(.+) b/', line)
             if match:
                 files.append(match.group(1))
+
+        if not files:
+            # Fallback for patch-file format (no diff --git headers):
+            # extract from "--- a/path" lines, skipping /dev/null (new files)
+            seen = set()
+            for line in diff.split('\n'):
+                match = re.match(r'^--- a/(.+)', line)
+                if match:
+                    path = match.group(1)
+                    if path not in seen:
+                        seen.add(path)
+                        files.append(path)
+
         return files
 
     def from_patch_file(self, patch_path: str) -> Commit:
@@ -407,13 +465,16 @@ class MultiRepoExtractor:
         Extract patch file content from a kernel-source commit.
 
         Looks for newly created patch files in patches.suse/ or patches.kabi/
-        and extracts their content including headers and description.
+        and extracts their content including headers, description, and diff.
 
         Args:
             commit_sha: Commit SHA in kernel-source repo
 
         Returns:
-            Dict with 'subject', 'message', 'author', 'git_commit' or None if no patch found
+            Dict with 'subject', 'message', 'author', 'git_commit', 'patch_content'
+            or None if no patch found.  'patch_content' is the full concatenated
+            content of all patch files added by the commit, suitable for use as a
+            diff when the downstream commit is too large to review directly.
         """
         if not self.is_available():
             return None
@@ -428,43 +489,48 @@ class MultiRepoExtractor:
             )
             diff = diff_result.stdout
 
-            # Look for new patch files in patches.suse/ or patches.kabi/
-            patch_file_path = None
+            # Collect content of every patch file added by this commit.
+            # A new file appears as "+++ b/patches.suse/..." followed by lines
+            # prefixed with '+' (since every line of a new file is "added").
+            # Stripping the leading '+' recovers the original patch file content.
+            all_patch_contents = []
+            current_patch_path = None
+            current_patch_lines = []
+
             for line in diff.split('\n'):
-                # Match: +++ b/patches.suse/filename.patch or +++ b/patches.kabi/filename.patch
+                # Detect the start of a new patch file section
                 match = re.match(r'^\+\+\+ b/(patches\.(?:suse|kabi)/[^\s]+\.patch)', line)
                 if match:
-                    patch_file_path = match.group(1)
+                    # Save the previous patch if any
+                    if current_patch_path and current_patch_lines:
+                        all_patch_contents.append('\n'.join(current_patch_lines))
+                    current_patch_path = match.group(1)
+                    current_patch_lines = []
                     if self.debug:
-                        print(f"Found patch file in kernel-source commit: {patch_file_path}")
-                    break
-
-            if not patch_file_path:
-                return None
-
-            # Extract the patch content from the diff
-            # The content appears as added lines (starting with '+')
-            patch_lines = []
-            in_patch_content = False
-
-            for line in diff.split('\n'):
-                # Start collecting after the "+++ b/patches.suse/..." line
-                if line.startswith('+++ b/' + patch_file_path):
-                    in_patch_content = True
+                        print(f"Found patch file in kernel-source commit: {current_patch_path}")
                     continue
 
-                # Stop at next file
-                if in_patch_content and line.startswith('diff --git'):
-                    break
+                if current_patch_path:
+                    # Stop collecting when the next file diff starts
+                    if line.startswith('diff --git'):
+                        all_patch_contents.append('\n'.join(current_patch_lines))
+                        current_patch_path = None
+                        current_patch_lines = []
+                        continue
+                    # Collect added lines, stripping the diff '+' prefix
+                    if line.startswith('+'):
+                        current_patch_lines.append(line[1:])
 
-                # Collect added lines (remove the leading '+')
-                if in_patch_content and line.startswith('+'):
-                    patch_lines.append(line[1:])  # Remove '+' prefix
+            # Save the last patch
+            if current_patch_path and current_patch_lines:
+                all_patch_contents.append('\n'.join(current_patch_lines))
 
-            if not patch_lines:
+            if not all_patch_contents:
                 return None
 
-            patch_content = '\n'.join(patch_lines)
+            # Concatenate all patch contents; parse headers from the first one
+            patch_content = '\n'.join(all_patch_contents)
+            first_patch = all_patch_contents[0]
 
             # Parse patch headers
             author = None
@@ -473,21 +539,16 @@ class MultiRepoExtractor:
             message_lines = []
             in_description = False
 
-            for line in patch_content.split('\n'):
-                # Extract From: author
+            for line in first_patch.split('\n'):
                 if line.startswith('From:'):
                     author = line.split(':', 1)[1].strip()
-                # Extract Subject:
                 elif line.startswith('Subject:'):
                     subject = line.split(':', 1)[1].strip()
                     in_description = True
-                # Extract Git-commit:
                 elif line.startswith('Git-commit:'):
                     git_commit = line.split(':', 1)[1].strip()
-                # Stop at start of actual patch diff
                 elif line.startswith('---') or line.startswith('diff --git'):
                     break
-                # Collect description lines (between Subject and ---)
                 elif in_description and line.strip() and not line.startswith(('References:', 'Patch-mainline:', 'Git-repo:', 'Date:')):
                     message_lines.append(line)
 
@@ -500,7 +561,7 @@ class MultiRepoExtractor:
                 full_message = '\n'.join(message_lines) if message_lines else None
 
             if self.debug and (subject or full_message):
-                print(f"Extracted patch description from {patch_file_path}")
+                print(f"Extracted patch description from {current_patch_path or 'kernel-source commit'}")
                 print(f"  Subject: {subject}")
                 if git_commit:
                     print(f"  Git-commit: {git_commit}")
@@ -509,7 +570,8 @@ class MultiRepoExtractor:
                 'subject': subject,
                 'message': full_message,
                 'author': author,
-                'git_commit': git_commit
+                'git_commit': git_commit,
+                'patch_content': patch_content,
             }
 
         except subprocess.CalledProcessError:
