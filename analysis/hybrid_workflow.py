@@ -24,6 +24,7 @@ class HybridReviewWorkflow(ReviewWorkflow):
         *args,
         enable_tools: bool = True,
         upstream_repo=None,
+        kernel_source_repo=None,
         **kwargs
     ):
         """
@@ -33,12 +34,16 @@ class HybridReviewWorkflow(ReviewWorkflow):
             llm_client: ToolEnabledClient instance
             enable_tools: Enable tool calling for deep-dive checks
             upstream_repo: MultiRepoExtractor for upstream Linux kernel (for backport verification)
+            kernel_source_repo: MultiRepoExtractor for SUSE kernel-source (to resolve
+                Git-commit: tags from suse-commit: references when the downstream commit
+                carries only a suse-commit: tag)
             *args, **kwargs: Passed to ReviewWorkflow
         """
         super().__init__(llm_client, *args, **kwargs)
         self.enable_tools = enable_tools
         self.backport_verifier = BackportVerifier(
             upstream_repo=upstream_repo,
+            kernel_source_repo=kernel_source_repo,
             verbose=kwargs.get('verbose', False),
             debug=kwargs.get('debug', False)
         )
@@ -678,6 +683,25 @@ Be concise but show the trace."""
                 parts.append(f"  ... and {len(comparison.line_number_shifts) - 5} more shifts")
             parts.append("")
 
+        if comparison.function_name_mismatches:
+            parts.append("⚠️  CRITICAL: WRONG-FUNCTION MISMATCHES DETECTED  ⚠️")
+            parts.append("The patch was applied to DIFFERENT functions than in upstream.")
+            parts.append("This is the most dangerous backport error — it may silently")
+            parts.append("leave the original bug unfixed or introduce a new regression.")
+            parts.append("")
+            for m in comparison.function_name_mismatches:
+                parts.append(f"  File: {m['file']}")
+                parts.append(f"    Upstream function:   {m['upstream_function']}()  (line {m['upstream_line']})")
+                parts.append(f"    Downstream function: {m['downstream_function']}()  (line {m['downstream_line']})")
+            parts.append("")
+            parts.append("For EACH mismatch above you MUST verify:")
+            parts.append("  1. Is this a simple rename (same body, different name)?")
+            parts.append("  2. Do both functions have equivalent callers, locking context,")
+            parts.append("     and execution context (interrupt vs. process, atomic vs. sleepable)?")
+            parts.append("  3. Does the fix achieve the same semantic goal in the downstream function?")
+            parts.append("  4. If in ANY doubt: report as 'backport-error: patch applied to wrong function'.")
+            parts.append("")
+
         if comparison.context_mismatches:
             parts.append("Context Mismatches (surrounding code differs):")
             for mismatch in comparison.context_mismatches[:3]:  # Limit to top 3
@@ -709,10 +733,15 @@ Be concise but show the trace."""
         if comparison.needs_deep_review:
             parts.append("**ACTION REQUIRED**: Deep verification needed!")
             parts.append("Verify that:")
-            parts.append("  1. Patch applied to functionally equivalent code location")
-            parts.append("  2. All critical parts of upstream patch are present")
-            parts.append("  3. Logic/semantics match upstream intent")
-            parts.append("  4. No missing error handling or cleanup code")
+            parts.append("  1. Check the hunk headers (@@ ... @@ func_name) in both upstream and")
+            parts.append("     downstream diffs — confirm the change lands in the SAME function.")
+            parts.append("     If function names differ, treat it as a critical red flag.")
+            parts.append("  2. Patch applied to functionally equivalent code location")
+            parts.append("  3. All critical parts of upstream patch are present")
+            parts.append("  4. Logic/semantics match upstream intent")
+            parts.append("  5. No missing error handling or cleanup code")
+            parts.append("  6. Both functions have the same callers, locking requirements,")
+            parts.append("     and execution context (interrupt/atomic/process/sleepable)")
             parts.append("")
 
         parts.append("=== END BACKPORT ANALYSIS ===")

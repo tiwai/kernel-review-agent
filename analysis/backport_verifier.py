@@ -18,6 +18,7 @@ class DiffHunk:
     removed_lines: List[str]
     added_lines: List[str]
     context_after: List[str]   # Lines after the change
+    function_name: Optional[str] = None  # Function name from hunk header (after @@)
 
 
 @dataclass
@@ -34,6 +35,7 @@ class BackportComparison:
     context_mismatches: List[Dict]  # Context doesn't match
     missing_hunks: List[str]  # Hunks in upstream but not downstream
     extra_hunks: List[str]   # Hunks in downstream but not upstream
+    function_name_mismatches: List[Dict]  # Patch applied to different function than upstream
 
     summary: str  # Human-readable summary
 
@@ -41,16 +43,20 @@ class BackportComparison:
 class BackportVerifier:
     """Verify backport quality by comparing downstream vs upstream patches."""
 
-    def __init__(self, upstream_repo=None, verbose: bool = False, debug: bool = False):
+    def __init__(self, upstream_repo=None, kernel_source_repo=None,
+                 verbose: bool = False, debug: bool = False):
         """
         Initialize backport verifier.
 
         Args:
             upstream_repo: MultiRepoExtractor for upstream Linux kernel
+            kernel_source_repo: MultiRepoExtractor for SUSE kernel-source (to
+                resolve Git-commit: tags from suse-commit: references)
             verbose: Enable verbose output
             debug: Enable debug output
         """
         self.upstream_repo = upstream_repo
+        self.kernel_source_repo = kernel_source_repo
         self.verbose = verbose
         self.debug = debug
 
@@ -82,6 +88,9 @@ class BackportVerifier:
         # Detect context mismatches
         context_mismatches = self._detect_context_mismatches(downstream_hunks, upstream_hunks)
 
+        # Detect function name mismatches (patch in different function than upstream)
+        function_name_mismatches = self._detect_function_name_mismatches(downstream_hunks, upstream_hunks)
+
         # Detect missing/extra hunks
         missing_hunks = self._detect_missing_hunks(upstream_hunks, downstream_hunks)
         extra_hunks = self._detect_missing_hunks(downstream_hunks, upstream_hunks)
@@ -91,16 +100,19 @@ class BackportVerifier:
             file_path_changes or
             line_number_shifts or
             context_mismatches or
+            function_name_mismatches or
             missing_hunks or
             extra_hunks
         )
 
         # Determine if deep review is needed
         # Deep review needed if:
+        # - Function name mismatches (patch applied to wrong function — highest priority)
         # - Context mismatches (patch applied to wrong location)
         # - Missing/extra hunks (incomplete backport)
         # - File path changes (different files modified)
         needs_deep_review = bool(
+            function_name_mismatches or
             context_mismatches or
             missing_hunks or
             extra_hunks or
@@ -110,7 +122,7 @@ class BackportVerifier:
         # Generate summary
         summary = self._generate_summary(
             file_path_changes, line_number_shifts, context_mismatches,
-            missing_hunks, extra_hunks, needs_deep_review
+            function_name_mismatches, missing_hunks, extra_hunks, needs_deep_review
         )
 
         return BackportComparison(
@@ -123,6 +135,7 @@ class BackportVerifier:
             context_mismatches=context_mismatches,
             missing_hunks=missing_hunks,
             extra_hunks=extra_hunks,
+            function_name_mismatches=function_name_mismatches,
             summary=summary
         )
 
@@ -144,7 +157,7 @@ class BackportVerifier:
                 if match:
                     current_file = match.group(2)  # Use 'b' path (after)
 
-            # Hunk header: @@ -old_start,old_count +new_start,new_count @@
+            # Hunk header: @@ -old_start,old_count +new_start,new_count @@ [func]
             elif line.startswith('@@'):
                 # Save previous hunk if exists
                 if current_hunk:
@@ -155,12 +168,19 @@ class BackportVerifier:
                     added = []
                     context_after = []
 
-                match = re.match(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@', line)
+                match = re.match(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@\s*(.*)', line)
                 if match and current_file:
                     old_start = int(match.group(1))
                     old_count = int(match.group(2)) if match.group(2) else 1
                     new_start = int(match.group(3))
                     new_count = int(match.group(4)) if match.group(4) else 1
+
+                    # Extract function name from trailing context (word before first '(')
+                    func_name = None
+                    trailing = match.group(5).strip() if match.group(5) else ''
+                    func_match = re.search(r'(\w+)\s*\(', trailing)
+                    if func_match:
+                        func_name = func_match.group(1)
 
                     current_hunk = DiffHunk(
                         file_path=current_file,
@@ -171,7 +191,8 @@ class BackportVerifier:
                         context_before=[],
                         removed_lines=[],
                         added_lines=[],
-                        context_after=[]
+                        context_after=[],
+                        function_name=func_name
                     )
                     in_change = False
 
@@ -307,6 +328,59 @@ class BackportVerifier:
 
         return mismatches
 
+    def _detect_function_name_mismatches(self, downstream_hunks: List[DiffHunk],
+                                          upstream_hunks: List[DiffHunk]) -> List[Dict]:
+        """Detect when matched hunks are applied to different functions."""
+        mismatches = []
+
+        # C keywords that cannot be function names (mirrors workflow.py logic)
+        _NON_FUNC = frozenset({
+            'static', 'inline', 'extern', 'const', 'volatile', 'struct', 'union',
+            'enum', 'typedef', 'void', 'int', 'long', 'unsigned', 'signed', 'char',
+            'short', 'float', 'double', 'bool', 'if', 'else', 'for', 'while', 'do',
+            'switch', 'case', 'return', 'goto', 'break', 'continue', 'sizeof',
+        })
+
+        downstream_by_file: Dict[str, List[DiffHunk]] = {}
+        upstream_by_file: Dict[str, List[DiffHunk]] = {}
+
+        for h in downstream_hunks:
+            downstream_by_file.setdefault(h.file_path, []).append(h)
+        for h in upstream_hunks:
+            upstream_by_file.setdefault(h.file_path, []).append(h)
+
+        # Also check cross-file when file paths differ (renames)
+        all_upstream_hunks = list(upstream_hunks)
+
+        for file_path, down_hunks in downstream_by_file.items():
+            # Prefer same-file upstream hunks; fall back to all upstream hunks
+            up_candidates = upstream_by_file.get(file_path, all_upstream_hunks)
+
+            for down_h in down_hunks:
+                up_match = self._find_matching_hunk(down_h, up_candidates)
+                if not up_match:
+                    continue
+
+                up_fn = up_match.function_name
+                down_fn = down_h.function_name
+
+                # Skip if either name is missing or is a C keyword
+                if not up_fn or not down_fn:
+                    continue
+                if up_fn in _NON_FUNC or down_fn in _NON_FUNC:
+                    continue
+
+                if up_fn != down_fn:
+                    mismatches.append({
+                        'file': file_path,
+                        'upstream_function': up_fn,
+                        'downstream_function': down_fn,
+                        'upstream_line': up_match.new_start,
+                        'downstream_line': down_h.new_start,
+                    })
+
+        return mismatches
+
     def _detect_missing_hunks(self, reference_hunks: List[DiffHunk],
                              comparison_hunks: List[DiffHunk]) -> List[str]:
         """Detect hunks in reference that are missing in comparison."""
@@ -380,14 +454,17 @@ class BackportVerifier:
         return matches / total if total > 0 else 0.0
 
     def _generate_summary(self, file_path_changes, line_number_shifts,
-                         context_mismatches, missing_hunks, extra_hunks,
-                         needs_deep_review) -> str:
+                         context_mismatches, function_name_mismatches,
+                         missing_hunks, extra_hunks, needs_deep_review) -> str:
         """Generate human-readable summary."""
         parts = []
 
         if not (file_path_changes or line_number_shifts or context_mismatches or
-                missing_hunks or extra_hunks):
+                function_name_mismatches or missing_hunks or extra_hunks):
             return "Downstream patch matches upstream exactly (clean backport)"
+
+        if function_name_mismatches:
+            parts.append(f"{len(function_name_mismatches)} WRONG-FUNCTION mismatch(es)")
 
         if file_path_changes:
             parts.append(f"{len(file_path_changes)} file path difference(s)")
@@ -421,8 +498,22 @@ class BackportVerifier:
         Returns:
             BackportComparison if upstream commit found, None otherwise
         """
-        # Check if commit has upstream reference
-        if not downstream.upstream_commit:
+        # Resolve upstream commit SHA: prefer direct Git-commit: tag, then fall
+        # back to looking it up from the kernel-source patch via suse-commit: tag.
+        upstream_sha = downstream.upstream_commit
+        if not upstream_sha and downstream.suse_commit and self.kernel_source_repo:
+            if self.verbose:
+                print(f"  No Git-commit tag; resolving via kernel-source "
+                      f"suse-commit {downstream.suse_commit[:12]}...")
+            patch_info = self.kernel_source_repo.extract_patch_from_commit(
+                downstream.suse_commit
+            )
+            if patch_info and patch_info.get('git_commit'):
+                upstream_sha = patch_info['git_commit']
+                if self.verbose:
+                    print(f"  Resolved upstream commit: {upstream_sha[:12]}")
+
+        if not upstream_sha:
             return BackportComparison(
                 has_upstream=False,
                 upstream_commit=None,
@@ -433,6 +524,7 @@ class BackportVerifier:
                 context_mismatches=[],
                 missing_hunks=[],
                 extra_hunks=[],
+                function_name_mismatches=[],
                 summary="No upstream commit reference found"
             )
 
@@ -442,10 +534,10 @@ class BackportVerifier:
                 print(f"  Warning: Upstream repository not available, cannot verify backport")
             return None
 
-        upstream = self.upstream_repo.get_commit(downstream.upstream_commit)
+        upstream = self.upstream_repo.get_commit(upstream_sha)
         if not upstream:
             if self.verbose:
-                print(f"  Warning: Upstream commit {downstream.upstream_commit[:12]} not found")
+                print(f"  Warning: Upstream commit {upstream_sha[:12]} not found")
             return None
 
         if self.verbose:

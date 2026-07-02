@@ -2,6 +2,68 @@
 
 When reviewing downstream kernel commits that are backports from upstream, pay special attention to **backport quality**. The patches are applied to an older codebase, which can lead to subtle bugs if not done correctly.
 
+## CRITICAL: Wrong-Function Detection (Check This First)
+
+The single most dangerous backport error is applying a fix to the **wrong function**.
+Backporters sometimes apply patches to a nearby function that looks syntactically
+similar but has different semantics, callers, or execution context.
+
+### Mandatory Function-Name Check
+
+Whenever you see backport differences (context mismatches, line shifts, etc.),
+**immediately compare the function names in the hunk headers** of both diffs.
+
+Unified diff hunk headers contain the enclosing function name:
+```
+@@ -150,7 +150,8 @@ static void process_request(struct request *req)
+                                    ^^^^^^^^^^^^^^^ — this is the function
+```
+
+**Step 1 — Extract function names from both diffs:**
+- Upstream: what does `@@ ... @@ <function>` say?
+- Downstream: what does `@@ ... @@ <function>` say?
+
+**Step 2 — If the function names differ:**
+
+This is a **CRITICAL RED FLAG**. You must:
+1. Determine whether this is a rename (same body, different name) — acceptable.
+2. Verify the two functions have equivalent callers, locking context, and execution
+   context (interrupt vs. process, atomic vs. sleepable).
+3. Confirm the fix achieves the same semantic goal in the downstream function.
+4. **If in any doubt: report as a backport error.** Wrong-function application is
+   far harder to spot than wrong-line application, so err on the side of reporting.
+
+**Step 3 — Even when function names match:**
+
+If the context-match score is very low (< 50%), verify that the function still
+serves the same purpose. It may have been split into two functions or had its
+role fundamentally changed by other patches.
+
+### Wrong-Function Red Flags
+
+**🚩 RED FLAG: Different function name in hunk header**
+```
+Upstream:   @@ -150,7 +155,8 @@ static void process_request(struct request *req)
+Downstream: @@ -143,7 +143,8 @@ static void handle_request(struct request *req)
+```
+`process_request` and `handle_request` may look similar but serve different roles.
+Requires explicit justification for why the different function is the right target.
+
+**🚩 RED FLAG: Same function name, radically different context**
+```
+Both say: @@ ... @@ static void foo(...)
+But upstream foo() holds a spinlock; downstream foo() does not.
+```
+The function may have been split, merged, or had its locking model reworked.
+The backport may have landed in the "wrong half" of the split function.
+
+**🚩 RED FLAG: Function exists in both but plays a different role**
+```
+Upstream: foo() is the primary IRQ handler
+Downstream: foo() is a helper called from the primary handler
+```
+A fix to an IRQ handler does NOT automatically apply correctly to a helper.
+
 ## Critical Rule: Verify Backports When Differences Detected
 
 If the backport analysis shows ANY differences between downstream and upstream patches:
@@ -124,7 +186,15 @@ Reason: Downstream has an extra legacy call site that was removed before upstrea
 
 These indicate likely **incorrect backport**:
 
-**🚩 RED FLAG: Function name mismatch**
+**🚩 RED FLAG: Function name mismatch in hunk header (MOST CRITICAL)**
+```
+Upstream hunk header:   @@ -150,7 +155,8 @@ static void process_request(...)
+Downstream hunk header: @@ -143,7 +143,8 @@ static void handle_request(...)
+```
+The fix landed in `handle_request` but was meant for `process_request`.
+Always read the text after the second `@@` in each hunk header.
+
+**🚩 RED FLAG: Function name mismatch (content level)**
 ```
 Upstream: Patches handle_request()
 Downstream: Patches process_request()  // Different function!
@@ -263,11 +333,15 @@ Downstream: Fixes 2 call sites (old code had more usage)
 
 ## Verification Strategy
 
+0. **(MANDATORY FIRST STEP) Compare function names** — Read the `@@ ... @@ func_name`
+   text in every hunk header from both the upstream and downstream diff.
+   If any hunk lands in a different function: treat as critical red flag (see above).
 1. **Read upstream commit message** - Understand the intent
 2. **Compare code structure** - Is the location equivalent?
 3. **Check semantics** - Does it achieve the same goal?
 4. **Verify completeness** - All critical parts backported?
 5. **Test logic** - Would it fix the same bug in downstream?
+6. **Verify execution context** - Same locking, same interrupt/process context?
 
 **If in doubt, report it as a potential backport issue.**
 

@@ -79,6 +79,7 @@ class MetadataGenerator:
                 "differences-found": backport_comparison.differences_found,
                 "needs-deep-review": backport_comparison.needs_deep_review,
                 "summary": backport_comparison.summary,
+                "wrong-function-mismatches": len(backport_comparison.function_name_mismatches),
                 "line-number-shifts": len(backport_comparison.line_number_shifts),
                 "context-mismatches": len(backport_comparison.context_mismatches),
                 "missing-hunks": len(backport_comparison.missing_hunks),

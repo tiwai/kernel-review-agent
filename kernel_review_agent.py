@@ -266,6 +266,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                 suse_verifier=None,  # TODO: pass if needed
                 enable_tools=True,
                 upstream_repo=upstream_repo_extractor,
+                kernel_source_repo=kernel_source_extractor,
                 propose_fixes=args.propose_fixes,
                 max_tool_iterations=args.max_tool_iterations,
                 stop_after=args.stop_after
@@ -1153,6 +1154,7 @@ Examples:
                 suse_verifier=suse_verifier,
                 enable_tools=True,
                 upstream_repo=upstream_repo_extractor,
+                kernel_source_repo=kernel_source_extractor,
                 propose_fixes=args.propose_fixes,
                 max_tool_iterations=args.max_tool_iterations,
                 stop_after=args.stop_after

@@ -101,6 +101,13 @@ class ReportFormatter:
                 lines.append("Backport-status: minor differences")
             else:
                 lines.append("Backport-status: clean")
+            if backport_comparison.function_name_mismatches:
+                lines.append("Backport-wrong-function:")
+                for m in backport_comparison.function_name_mismatches:
+                    lines.append(
+                        f"  {m['file']}: upstream={m['upstream_function']}() "
+                        f"downstream={m['downstream_function']}()"
+                    )
             lines.append("")
 
         # Summary (if provided or generate default)
