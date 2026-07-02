@@ -464,27 +464,35 @@ class BackportVerifier:
             return "Downstream patch matches upstream exactly (clean backport)"
 
         if function_name_mismatches:
-            parts.append(f"{len(function_name_mismatches)} WRONG-FUNCTION mismatch(es)")
-
-        if file_path_changes:
-            parts.append(f"{len(file_path_changes)} file path difference(s)")
-
-        if line_number_shifts:
-            parts.append(f"{len(line_number_shifts)} line number shift(s)")
-
-        if context_mismatches:
-            parts.append(f"{len(context_mismatches)} context mismatch(es)")
+            fn = function_name_mismatches[0]
+            desc = (f"patch applied to {fn['downstream_function']}() "
+                    f"but upstream targets {fn['upstream_function']}()")
+            if len(function_name_mismatches) > 1:
+                desc += f" (and {len(function_name_mismatches) - 1} more)"
+            parts.append(desc)
+        elif context_mismatches:
+            n = len(context_mismatches)
+            parts.append(f"surrounding context differs in {n} hunk{'s' if n > 1 else ''}")
 
         if missing_hunks:
-            parts.append(f"{len(missing_hunks)} missing hunk(s)")
+            n = len(missing_hunks)
+            parts.append(f"{n} upstream hunk{'s' if n > 1 else ''} not applied downstream")
 
         if extra_hunks:
-            parts.append(f"{len(extra_hunks)} extra hunk(s)")
+            n = len(extra_hunks)
+            parts.append(f"{n} extra hunk{'s' if n > 1 else ''} not present in upstream")
 
-        summary = "Backport differences detected: " + ", ".join(parts)
+        if file_path_changes:
+            parts.append("different file paths modified")
+
+        if line_number_shifts and not function_name_mismatches and not context_mismatches:
+            n = len(line_number_shifts)
+            parts.append(f"applied at different line numbers ({n} hunk{'s' if n > 1 else ''})")
+
+        summary = "Downstream patch differs from upstream: " + "; ".join(parts)
 
         if needs_deep_review:
-            summary += " → NEEDS DEEP REVIEW"
+            summary += " -- needs review"
 
         return summary
 

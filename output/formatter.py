@@ -94,20 +94,33 @@ class ReportFormatter:
 
         # Backport comparison results (if Phase 0 ran)
         if backport_comparison and backport_comparison.has_upstream:
-            lines.append(f"Backport-verification: {backport_comparison.summary}")
-            if backport_comparison.needs_deep_review:
-                lines.append("Backport-status: NEEDS DEEP REVIEW")
+            up = backport_comparison.upstream_commit
+            lines.append(f"Backport-upstream: {up[:12] if up else 'unknown'}")
+
+            if backport_comparison.function_name_mismatches:
+                lines.append("Backport-status: wrong function")
+                lines.append("")
+                for m in backport_comparison.function_name_mismatches:
+                    lines.extend(self._wrap_text(
+                        f"WARNING: The downstream patch was applied to "
+                        f"{m['downstream_function']}() in {m['file']}, "
+                        f"but the upstream commit targets "
+                        f"{m['upstream_function']}(). "
+                        f"Please verify that {m['downstream_function']}() is "
+                        f"the correct location for this fix in this kernel "
+                        f"version, or re-apply the patch to "
+                        f"{m['upstream_function']}()."
+                    ))
+            elif backport_comparison.needs_deep_review:
+                lines.append("Backport-status: needs review")
+                lines.append("")
+                lines.append(backport_comparison.summary)
             elif backport_comparison.differences_found:
                 lines.append("Backport-status: minor differences")
+                lines.append("")
+                lines.append(backport_comparison.summary)
             else:
                 lines.append("Backport-status: clean")
-            if backport_comparison.function_name_mismatches:
-                lines.append("Backport-wrong-function:")
-                for m in backport_comparison.function_name_mismatches:
-                    lines.append(
-                        f"  {m['file']}: upstream={m['upstream_function']}() "
-                        f"downstream={m['downstream_function']}()"
-                    )
             lines.append("")
 
         # Summary (if provided or generate default)
