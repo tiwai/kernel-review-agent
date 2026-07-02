@@ -1762,7 +1762,8 @@ Examples:
                 # RuntimeError includes our timeout and connection errors
                 error_msg = str(e)
                 print(f"✗ Error processing commit {commit_ref}:", file=sys.stderr)
-                print(f"  {error_msg}", file=sys.stderr)
+                for line in error_msg.splitlines():
+                    print(f"  {line}", file=sys.stderr)
 
                 # Suggest host reset if fatal error and not already enabled
                 from llm_integration.error_detector import is_fatal_host_error

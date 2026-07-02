@@ -40,7 +40,7 @@ class CommitExtractor:
             )
             return result.stdout
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Git command failed: {e.stderr}")
+            raise RuntimeError(f"Git command failed: {e.stderr.strip()}")
 
     def is_git_repo(self) -> bool:
         """Check if current directory is a git repository."""
@@ -157,7 +157,12 @@ class CommitExtractor:
             Commit object with metadata and diff
         """
         # Get commit metadata with fuller format
-        output = self._run_git(['show', '--format=fuller', '--no-patch', ref])
+        try:
+            output = self._run_git(['show', '--format=fuller', '--no-patch', ref])
+        except RuntimeError as e:
+            if 'unknown revision' in str(e) or 'not in the working tree' in str(e):
+                raise RuntimeError(f"Commit '{ref}' not found in repository")
+            raise
 
         # Parse metadata
         sha = self._run_git(['rev-parse', ref]).strip()
