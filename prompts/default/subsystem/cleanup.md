@@ -1,5 +1,108 @@
 # Cleanup and Guard Subsystem Details
 
+## Macro Syntax and Invocation
+
+The guard and cleanup macros use non-obvious call syntax that is frequently
+misread — the two primary macros differ in how arguments are passed.
+
+**`guard(TYPE)(LOCK)`** — two separate argument groups:
+- `(TYPE)` selects the guard class (e.g., `mutex`, `spinlock`, `spinlock_irqsave`)
+- `(LOCK)` is a separate argument group passing a pointer to the lock object
+- Example: `guard(mutex)(&dev->lock)` — **NOT** `guard(mutex, &dev->lock)`
+- The lock is acquired immediately and held until the enclosing scope exits
+- There is no named variable exposed — the lock is anonymous
+
+**`scoped_guard(TYPE, LOCK) { body }`** — comma-separated args, then a block:
+- `TYPE` and `LOCK` form a single comma-separated argument list (unlike `guard()`)
+- The body is a block statement, like the body of `for`/`while`/`if`
+- **`break` inside the body exits the block legally** — it is not a bug or
+  loop escape; it is the intended early-exit mechanism for this construct
+- For conditional/trylock variants, the body is skipped entirely if the lock
+  was not acquired — absence of the body is correct, not a missed path
+- Example: `scoped_guard(mutex, &dev->lock) { val = dev->data; }`
+
+**Standard TYPE names** (defined in `include/linux/spinlock.h`, `include/linux/mutex.h`
+and related headers):
+
+| TYPE name | Underlying lock | IRQ behavior |
+|---|---|---|
+| `spinlock` | `spinlock_t` | none |
+| `spinlock_irq` | `spinlock_t` | disables IRQs |
+| `spinlock_irqsave` | `spinlock_t` | saves/restores IRQ state |
+| `raw_spinlock` | `raw_spinlock_t` | none |
+| `raw_spinlock_irqsave` | `raw_spinlock_t` | saves/restores IRQ state |
+| `mutex` | `struct mutex` | sleepable |
+| `rwsem_read` | `struct rw_semaphore` | read lock, sleepable |
+| `rwsem_write` | `struct rw_semaphore` | write lock, sleepable |
+
+Subsystems may define additional local types via `DEFINE_GUARD()` or
+`DEFINE_LOCK_GUARD_1()` — always verify against the actual definition.
+
+## Deadlock Verification for guard() and scoped_guard()
+
+`guard()` and `scoped_guard()` acquire real locks. Apply the same deadlock
+analysis as for explicit lock/unlock pairs:
+
+**ABBA deadlock**: If the code already holds another lock when `guard()` or
+`scoped_guard()` is entered, verify that the lock acquisition order is
+consistent across all code paths. Inconsistent ordering (A→B in one path,
+B→A in another) is a deadlock bug.
+
+**Context compatibility**: Check the TYPE against the caller's execution context:
+- `mutex` and `rwsem` guards sleep — they **cannot** be used in atomic context
+  (hardirq, softirq handler, preempt-disabled, or while holding a spinlock)
+- `spinlock`/`spinlock_irq`/`spinlock_irqsave` guards do not sleep — safe in
+  preempt-disabled context, but not inside `raw_spinlock_t` critical sections
+- `spinlock_irqsave` is required when the same lock is also accessed from
+  an IRQ handler
+
+**Lock nesting**: The wait-type hierarchy (from locking.md §5) applies to
+guards. `mutex` or `rwsem` guards cannot nest inside `spinlock` guards.
+`spinlock` guards cannot nest inside `raw_spinlock` guards.
+
+**False positive caution**: A `guard()` at function scope is held for the
+entire function body. A `scoped_guard()` is held only for its compound
+statement. Verify the lock TYPE and scope before concluding a deadlock.
+
+## __free() and Memory Leak Analysis
+
+**Do NOT report memory leaks for variables decorated with `__free()`.**
+
+The cleanup function runs automatically when the variable goes out of scope —
+cleanup is guaranteed by the compiler's `__attribute__((cleanup(...)))`. A
+missing `kfree()` call is not a leak if `__free(kfree)` is present.
+
+The only true leak is when ownership is transferred to another owner WITHOUT
+using `no_free_ptr()` or `return_ptr()` to inhibit cleanup, resulting in the
+resource being freed before the new owner can use it. That is a double-free,
+not a leak.
+
+## __free() UAF from Blind Reassignment
+
+UAF can still occur with `__free()` if a `__free()`-decorated variable is
+assigned a new pointer value without first consuming the original value via
+`no_free_ptr()` or `return_ptr()`. At scope exit, the cleanup function fires
+on whatever value the variable currently holds — the **new** value, not the
+original allocation.
+
+```c
+struct obj *p __free(kfree) = alloc_obj();
+// ... use p ...
+p = another_ptr;   // WRONG: kfree fires on another_ptr at scope exit,
+                   // not on the original alloc_obj() allocation.
+                   // another_ptr's other users see a freed object → UAF.
+                   // The original alloc_obj() allocation is also leaked.
+```
+
+**REPORT as bugs**: Any `__free()` variable that is reassigned a new value
+without first extracting the original via `no_free_ptr()`. The correct pattern
+is to call `no_free_ptr(p)` to obtain and consume the current value before
+assigning a new one.
+
+The original allocation is also leaked in this scenario — but **do not report
+that as the primary bug**. The UAF of the new value at scope exit is the
+crash-risk issue.
+
 ## Cleanup Function Compatibility
 
 Using `__free()` with a cleanup function that cannot handle all values the
