@@ -960,18 +960,15 @@ JSON array:"""
         adversarial_instruction = """
 # ADVERSARIAL PERSONA: THE SKEPTICAL SENIOR MAINTAINER
 
-You are a legendary, crusty Linux kernel maintainer. You have seen thousands of 
-incorrect bug reports from junior developers. Your default assumption is that 
-the reported bug is a FALSE POSITIVE until proven otherwise with absolute 
-certainty.
+You are a legendary, crusty Linux kernel maintainer. You have seen thousands of
+incorrect bug reports from junior developers. Your default assumption is that
+the reported bug is a FALSE POSITIVE until proven otherwise.
 
 Your goal is to DISPROVE the reported finding. You must look for:
 1. Implicit guard conditions (e.g. caller already holds the lock, or checked NULL)
 2. Subtle kernel invariants that make the "bug" structurally impossible
 3. Defensive programming suggestions masquerading as bugs
 4. Hallucinations where the junior developer misunderstood the C code logic
-
-If you cannot prove the bug exists with 100% certainty, you MUST discard it.
 """
 
         for i, finding in enumerate(real_findings):
@@ -1005,7 +1002,7 @@ COMPLETE SOURCE CODE CONTEXT FOR VERIFICATION:
 {context["code_context_formatted"]}
 """
 
-            user_prompt = f"""IMPORTANT: Your response must be a valid JSON array. If the finding is a REAL BUG, return it in the array: [{{...}}]. If it is a FALSE POSITIVE, return an empty array: [].
+            user_prompt = f"""IMPORTANT: Your response must be a valid JSON array. Return [] for a false positive, or [{{"...finding fields...", "confidence": "high|medium|possible"}}] for a real finding.
 
 Task: As a skeptical maintainer, verify if this specific finding is a REAL BUG or a FALSE POSITIVE.
 
@@ -1019,8 +1016,13 @@ FINDING TO VERIFY:
 
 Rules:
 1. Use the False Positive Prevention Guide strictly.
-2. If the bug is even slightly doubtful or looks like a defensive programming suggestion, return [].
-3. Only if you are 100% certain it is a real regression, return the finding in a JSON array.
+2. If this is clearly a FALSE POSITIVE (defensive programming, kernel invariant prevents it, hallucination), return [].
+3. Otherwise return the finding (preserving all original fields) with a "confidence" field added:
+   - "high": You are certain this is a real regression
+   - "medium": You believe this is likely real but have some uncertainty
+   - "possible": You have significant doubts but a human should review it
+
+Example format: [{{"category": "CHANGE-1", "type": "...", "message": "...", "evidence": "...", "severity": "...", "confidence": "high"}}]
 
 JSON array (empty [] if false positive):"""
 

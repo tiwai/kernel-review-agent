@@ -204,6 +204,19 @@ class ReportFormatter:
         if findings:
             result += "\n\n"
             for i, finding in enumerate(findings, 1):
+                # Build header with type, severity, and confidence if available
+                ftype = finding.get('type', '')
+                severity = finding.get('severity', '')
+                confidence = finding.get('confidence', '')
+                header_parts = []
+                if ftype:
+                    header_parts.append(f"type: {ftype}")
+                if severity:
+                    header_parts.append(f"severity: {severity}")
+                if confidence:
+                    header_parts.append(f"confidence: {confidence}")
+                if header_parts:
+                    result += f"[Finding {i} — {', '.join(header_parts)}]\n"
                 message = finding.get('message', 'Potential issue found')
                 wrapped = self._wrap_text(message)
                 result += "\n".join(wrapped) + "\n"

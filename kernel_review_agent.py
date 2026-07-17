@@ -83,7 +83,7 @@ from llm_integration import create_llm_client, get_provider_from_args, ToolEnabl
 from prompt_management import PromptLoader, SubsystemMatcher
 from prompt_management.prompt_set_mapper import PromptSetMapper
 from analysis import ReviewWorkflow, HybridReviewWorkflow
-from output import ReportFormatter, MetadataGenerator
+from output import ReportFormatter, JSONReportFormatter, MetadataGenerator
 
 
 def process_commit_worker(instance_id, work_queue, results_queue, args, host_reset_event, stop_event):
@@ -284,6 +284,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
             )
 
         formatter = ReportFormatter()
+        json_formatter = JSONReportFormatter()
         metadata_gen = MetadataGenerator()
 
         # Process items from queue
@@ -356,6 +357,17 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                         input_tokens=result.input_tokens,
                         output_tokens=result.output_tokens
                     )
+                    report_json = json_formatter.format_report(
+                        commit, result.findings,
+                        summary=result.summary,
+                        suse_verification=result.suse_verification,
+                        backport_comparison=result.backport_comparison,
+                        elapsed_time=elapsed_time,
+                        is_patch=is_patch,
+                        model_name=args.model,
+                        input_tokens=result.input_tokens,
+                        output_tokens=result.output_tokens
+                    )
                     metadata = metadata_gen.generate(
                         commit, result.findings,
                         elapsed_time=elapsed_time,
@@ -386,10 +398,12 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
 
                     # Write outputs
                     report_path = os.path.join(commit_dir, "review-inline.txt")
+                    json_path = os.path.join(commit_dir, "review-inline.json")
                     metadata_path = os.path.join(commit_dir, "review-metadata.json")
 
                     with open(report_path, 'w') as f:
                         f.write(report_text)
+                    metadata_gen.save_json(report_json, json_path)
                     metadata_gen.save_json(metadata, metadata_path)
 
                     # Write fix patches if any
@@ -1180,6 +1194,7 @@ Examples:
             stop_after=args.stop_after
         )
     formatter = ReportFormatter()
+    json_formatter = JSONReportFormatter()
     metadata_gen = MetadataGenerator()
 
     # Re-verification mode: load and re-verify existing pre-verification JSON files
@@ -1252,6 +1267,16 @@ Examples:
                     input_tokens=result.input_tokens,
                     output_tokens=result.output_tokens
                 )
+                report_json = json_formatter.format_report(
+                    commit,
+                    result.findings,
+                    summary=result.summary,
+                    suse_verification=result.suse_verification,
+                    elapsed_time=elapsed_time,
+                    model_name=args.model,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens
+                )
                 metadata = metadata_gen.generate(
                     commit, result.findings,
                     elapsed_time=elapsed_time,
@@ -1262,11 +1287,13 @@ Examples:
 
                 # Write output files (overwrite existing)
                 report_path = os.path.join(commit_dir, "review-inline.txt")
+                json_path = os.path.join(commit_dir, "review-inline.json")
                 metadata_path = os.path.join(commit_dir, "review-metadata.json")
 
                 with open(report_path, 'w') as f:
                     f.write(report_text)
 
+                metadata_gen.save_json(report_json, json_path)
                 metadata_gen.save_json(metadata, metadata_path)
 
                 # Print summary
@@ -1539,6 +1566,7 @@ Examples:
                 old_files = [
                     os.path.join(args.output_dir, "review-metadata.json"),
                     os.path.join(args.output_dir, "review-inline.txt"),
+                    os.path.join(args.output_dir, "review-inline.json"),
                     os.path.join(args.output_dir, "review-fix-patches.diff"),
                 ]
                 for old_file in old_files:
@@ -1560,6 +1588,18 @@ Examples:
                     input_tokens=result.input_tokens,
                     output_tokens=result.output_tokens
                 )
+                report_json = json_formatter.format_report(
+                    commit,
+                    result.findings,
+                    summary=result.summary,
+                    suse_verification=result.suse_verification,
+                    backport_comparison=result.backport_comparison,
+                    elapsed_time=elapsed_time,
+                    is_patch=True,
+                    model_name=args.model,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens
+                )
                 metadata = metadata_gen.generate(
                     commit, result.findings,
                     elapsed_time=elapsed_time,
@@ -1572,11 +1612,13 @@ Examples:
 
                 # Write output files to output directory (flat structure for patches)
                 report_path = os.path.join(args.output_dir, "review-inline.txt")
+                json_path = os.path.join(args.output_dir, "review-inline.json")
                 metadata_path = os.path.join(args.output_dir, "review-metadata.json")
 
                 with open(report_path, 'w') as f:
                     f.write(report_text)
 
+                metadata_gen.save_json(report_json, json_path)
                 metadata_gen.save_json(metadata, metadata_path)
 
                 # Write fix patches if proposed
@@ -1684,6 +1726,7 @@ Examples:
                         os.path.join(commit_dir, "review-metadata.json"),
                         os.path.join(commit_dir, "review-pre-verification.json"),
                         os.path.join(commit_dir, "review-inline.txt"),
+                        os.path.join(commit_dir, "review-inline.json"),
                         os.path.join(commit_dir, "review-fix-patches.diff"),
                     ]
                     for old_file in old_files:
@@ -1722,6 +1765,17 @@ Examples:
                     input_tokens=result.input_tokens,
                     output_tokens=result.output_tokens
                 )
+                report_json = json_formatter.format_report(
+                    commit,
+                    result.findings,
+                    summary=result.summary,
+                    suse_verification=result.suse_verification,
+                    backport_comparison=result.backport_comparison,
+                    elapsed_time=elapsed_time,
+                    model_name=args.model,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens
+                )
                 metadata = metadata_gen.generate(
                     commit, result.findings,
                     elapsed_time=elapsed_time,
@@ -1733,11 +1787,13 @@ Examples:
 
                 # Write output files to commit directory
                 report_path = os.path.join(commit_dir, "review-inline.txt")
+                json_path = os.path.join(commit_dir, "review-inline.json")
                 metadata_path = os.path.join(commit_dir, "review-metadata.json")
 
                 with open(report_path, 'w') as f:
                     f.write(report_text)
 
+                metadata_gen.save_json(report_json, json_path)
                 metadata_gen.save_json(metadata, metadata_path)
 
                 # Write fix patches if proposed

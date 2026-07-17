@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""
+View a kernel review result from review-inline.json.
+
+Usage:
+  view-review <commit-dir>
+  view-review <review-inline.json>
+  view-review --min-confidence medium <commit-dir>
+  view-review --no-diff <commit-dir>
+"""
+
+import argparse
+import json
+import os
+import sys
+import textwrap
+
+CONFIDENCE_ORDER = {"possible": 0, "medium": 1, "high": 2}
+LINE_WIDTH = 78
+
+
+def wrap(text: str) -> str:
+    return "\n".join(textwrap.wrap(text, width=LINE_WIDTH))
+
+
+def resolve_json_path(path: str) -> str:
+    if os.path.isfile(path):
+        if path.endswith(".json"):
+            return path
+        sys.exit(f"Error: not a JSON file: {path}")
+    if os.path.isdir(path):
+        candidate = os.path.join(path, "review-inline.json")
+        if os.path.isfile(candidate):
+            return candidate
+        sys.exit(f"Error: no review-inline.json found in {path}")
+    sys.exit(f"Error: path not found: {path}")
+
+
+def confidence_rank(finding: dict) -> int:
+    return CONFIDENCE_ORDER.get(finding.get("confidence", "possible"), 0)
+
+
+def render(data: dict, min_confidence: str, show_diff: bool) -> str:
+    lines = []
+    min_rank = CONFIDENCE_ORDER.get(min_confidence, 0)
+
+    # Header
+    if data.get("commit"):
+        lines.append(f"commit {data['commit']}")
+    lines.append(f"Author: {data.get('author', '')}")
+    lines.append("")
+    lines.append(data.get("subject", ""))
+    lines.append("")
+
+    if data.get("suse-commit"):
+        lines.append(f"suse-commit: {data['suse-commit']}")
+    if data.get("upstream-commit"):
+        lines.append(f"Git-commit: {data['upstream-commit']}")
+    if data.get("suse-commit") or data.get("upstream-commit"):
+        lines.append("")
+
+    # SUSE verification
+    sv = data.get("suse-verification")
+    if sv:
+        lines.append(f"Verified-against: {sv.get('upstream-commit', '')}")
+        lines.append(f"Upstream-subject: {sv.get('upstream-subject', '')}")
+        fu = sv.get("findings-in-upstream", 0)
+        fd = sv.get("findings-downstream-only", 0)
+        if fu or fd:
+            lines.append(f"Findings-in-upstream: {fu}")
+            lines.append(f"Findings-downstream-only: {fd}")
+        lines.append("")
+
+    # Backport
+    bp = data.get("backport")
+    if bp:
+        lines.append(f"Backport-upstream: {bp.get('upstream', 'unknown')}")
+        lines.append(f"Backport-status: {bp.get('status', '')}")
+        if bp.get("summary"):
+            lines.append("")
+            lines.append(bp["summary"])
+        if bp.get("function-mismatches"):
+            for m in bp["function-mismatches"]:
+                lines.append("")
+                lines.append(wrap(
+                    f"WARNING: The downstream patch was applied to "
+                    f"{m.get('downstream_function', '?')}() in {m.get('file', '?')}, "
+                    f"but the upstream commit targets "
+                    f"{m.get('upstream_function', '?')}(). "
+                    f"Please verify that {m.get('downstream_function', '?')}() is "
+                    f"the correct location for this fix."
+                ))
+        lines.append("")
+
+    # Summary
+    lines.append(wrap(data.get("summary", "")))
+    lines.append("")
+
+    # Timing / model / tokens
+    if data.get("review-time-seconds") is not None:
+        lines.append(f"Review-time: {data['review-time-seconds']:.2f} seconds")
+        lines.append("")
+    if data.get("model"):
+        lines.append(f"Review-model: {data['model']}")
+        lines.append("")
+    if data.get("total-tokens") is not None:
+        lines.append(f"Input-tokens: {data.get('input-tokens', 0)}")
+        lines.append(f"Output-tokens: {data.get('output-tokens', 0)}")
+        lines.append(f"Total-tokens: {data.get('total-tokens', 0)}")
+        lines.append("")
+
+    # Findings (filtered by confidence)
+    findings = data.get("findings", [])
+    visible = [f for f in findings if confidence_rank(f) >= min_rank]
+
+    if not visible:
+        if findings:
+            hidden = len(findings) - len(visible)
+            lines.append(
+                f"(All {len(findings)} finding(s) filtered out by "
+                f"--min-confidence {min_confidence}; "
+                f"{hidden} below threshold)"
+            )
+        return "\n".join(lines)
+
+    lines.append(f"--- Findings ({len(visible)} shown")
+    if len(visible) < len(findings):
+        lines[-1] += f", {len(findings) - len(visible)} filtered by --min-confidence {min_confidence}"
+    lines[-1] += ") ---"
+    lines.append("")
+
+    for i, finding in enumerate(visible, 1):
+        ftype = finding.get("type", "")
+        severity = finding.get("severity", "")
+        confidence = finding.get("confidence", "")
+        upstream_status = finding.get("upstream_status", "")
+
+        header_parts = []
+        if ftype:
+            header_parts.append(f"type: {ftype}")
+        if severity:
+            header_parts.append(f"severity: {severity}")
+        if confidence:
+            header_parts.append(f"confidence: {confidence}")
+        if upstream_status:
+            header_parts.append(f"upstream: {upstream_status}")
+
+        lines.append(f"[Finding {i} — {', '.join(header_parts)}]")
+
+        message = finding.get("message", "")
+        if message:
+            lines.append(wrap(message))
+
+        evidence = finding.get("evidence", "")
+        if isinstance(evidence, list):
+            evidence = "\n".join(str(e) for e in evidence)
+        if evidence:
+            lines.append("")
+            for ev_line in evidence.splitlines():
+                if len(ev_line) > LINE_WIDTH and not ev_line.strip().startswith(
+                    (">", "-", "*", "`")
+                ):
+                    lines.append(wrap(ev_line))
+                else:
+                    lines.append(ev_line)
+
+        if i < len(visible):
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="View a kernel review result from review-inline.json"
+    )
+    parser.add_argument(
+        "path",
+        help="Path to review-inline.json or a commit review directory"
+    )
+    parser.add_argument(
+        "--min-confidence",
+        choices=["possible", "medium", "high"],
+        default="possible",
+        help="Minimum confidence level to display (default: possible)"
+    )
+    parser.add_argument(
+        "--no-diff",
+        action="store_true",
+        help="Skip the quoted diff section (not stored in JSON, so this is a no-op)"
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Dump raw JSON instead of rendering text"
+    )
+    args = parser.parse_args()
+
+    json_path = resolve_json_path(args.path)
+
+    try:
+        with open(json_path) as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        sys.exit(f"Error: invalid JSON in {json_path}: {e}")
+
+    if args.json:
+        print(json.dumps(data, indent=2))
+        return
+
+    print(render(data, args.min_confidence, not args.no_diff))
+
+
+if __name__ == "__main__":
+    main()

@@ -7,9 +7,10 @@ AI-powered agent for automated review of Linux kernel git commits. This agent an
 - **Code-focused analysis**: Reviews only code changes, ignoring commit message quality and tags
 - **5-task review protocol**: Systematic approach based on Linux kernel review best practices
 - **Subsystem-aware**: Automatically loads relevant subsystem guides (RCU, MM, networking, BPF, etc.)
-- **False positive filtering**: Applies verification checks to eliminate false positives
+- **False positive filtering**: Applies verification checks to eliminate false positives; surviving findings carry a confidence level (`high`/`medium`/`possible`)
 - **LKML-compliant output**: Generates plain text reports suitable for mailing lists
-- **Structured metadata**: JSON output with severity scoring for tooling integration
+- **Structured JSON output**: `review-inline.json` captures all finding fields (type, severity, confidence, message, evidence) for tooling integration and post-processing
+- **Viewer**: `view-review` renders `review-inline.json` as human-readable text with optional confidence filtering
 
 ## Installation
 
@@ -170,7 +171,7 @@ python kernel_review_agent.py --patch *.patch --output-dir ./reviews/
 **Patch mode behavior:**
 - Arguments are treated as patch file paths (not commit SHAs)
 - Patch is analyzed as if applied on top of current HEAD
-- Output files are flat: `review-inline.txt` and `review-metadata.json` in output directory
+- Output files are flat: `review-inline.txt`, `review-inline.json`, and `review-metadata.json` in output directory
 - SUSE kernel-source verification is skipped
 - If patch contains `Git-commit:` tag, upstream commit is checked
 - Commit SHA and SUSE-commit fields are omitted from output
@@ -525,12 +526,14 @@ For each commit reviewed, files are organized in a git-like directory structure:
 output_dir/
 ├── ab/
 │   └── abc123def456789.../
-│       ├── review-inline.txt
-│       ├── review-metadata.json
-│       └── review-pre-verification.json  (optional, for SUSE verification)
+│       ├── review-inline.txt             # LKML-compliant plain text
+│       ├── review-inline.json            # Structured JSON with all finding fields
+│       ├── review-metadata.json          # Summary stats (counts, severity, timing)
+│       └── review-pre-verification.json  # Optional: pre-verification snapshot
 └── cd/
     └── cdef456789abc123.../
         ├── review-inline.txt
+        ├── review-inline.json
         └── review-metadata.json
 ```
 
@@ -547,6 +550,7 @@ For patch files, output is flat (no subdirectories):
 ```
 output_dir/
 ├── review-inline.txt
+├── review-inline.json
 └── review-metadata.json
 ```
 
@@ -561,9 +565,9 @@ output_dir/
 LKML-compliant plain text report with:
 - Commit metadata (SHA, author, subject)
 - Summary of findings
-- Review metadata (time, model)
-- Quoted diff with inline comments
-- Detailed analysis of each issue
+- Review metadata (time, model, token usage)
+- Quoted diff
+- Per-finding header with type, severity, and **confidence level**, followed by the analysis
 
 Example:
 ```
@@ -579,16 +583,60 @@ Review-time: 45.32 seconds
 Review-model: gpt-4
 
 > diff --git a/mm/vmscan.c b/mm/vmscan.c
-> --- a/mm/vmscan.c
-> +++ b/mm/vmscan.c
 > @@ -1234,5 +1234,8 @@ static int shrink_page_list(...)
 > +    folio = folio_alloc();
-         ^
+
+[Finding 1 — type: memory-leak, severity: medium, confidence: high]
 Can this leak the folio? The allocation is not freed in the error path
 when the function returns early...
 ```
 
-### 2. `review-metadata.json`
+### 2. `review-inline.json`
+
+Structured JSON containing all review data in machine-readable form. Suitable for tooling integration, filtering by confidence or severity, and driving the `view-review` viewer.
+
+```json
+{
+  "commit": "abc123def456789",
+  "author": "Jane Developer <jane@example.com>",
+  "subject": "mm: fix use-after-free in page reclaim",
+  "summary": "This commit has 1 potential issue that should be reviewed.",
+  "findings": [
+    {
+      "category": "CHANGE-1",
+      "type": "memory-leak",
+      "severity": "medium",
+      "confidence": "high",
+      "message": "Can this leak the folio? The allocation is not freed in the error path...",
+      "evidence": "folio = folio_alloc();\nif (err)\n    return err;  // folio not freed"
+    }
+  ],
+  "review-time-seconds": 45.32,
+  "model": "gpt-4",
+  "input-tokens": 12400,
+  "output-tokens": 3100,
+  "total-tokens": 15500
+}
+```
+
+**Finding confidence levels** (set by the verification step):
+- `high`: The model is certain this is a real regression
+- `medium`: The model believes this is likely real but has some uncertainty
+- `possible`: Significant doubt remains; human review is recommended
+
+**Viewing and filtering** with `view-review`:
+```bash
+# Render as human-readable text
+view-review ./reviews/ab/abc123.../
+
+# Show only high-confidence findings
+view-review --min-confidence high ./reviews/ab/abc123.../
+
+# Dump raw JSON
+view-review --json ./reviews/ab/abc123.../
+```
+
+### 3. `review-metadata.json`
 
 Structured JSON metadata:
 ```json
@@ -614,7 +662,7 @@ Structured JSON metadata:
 - `suse-commit`: SUSE kernel-source commit SHA (optional, SUSE downstream only)
 - `upstream-commit`: Upstream commit SHA (optional, if available)
 
-### 3. `review-pre-verification.json` (optional)
+### 4. `review-pre-verification.json` (optional)
 
 Generated only when SUSE upstream verification is enabled and finds issues in both upstream and downstream code. Contains all findings before the false-positive verification step, with classification of which findings are present in upstream vs. downstream-only.
 
@@ -622,6 +670,7 @@ Generated only when SUSE upstream verification is enabled and finds issues in bo
 
 ```
 kernel_review_agent.py          # CLI entry point
+view-review                     # Viewer: render review-inline.json as text
 ├── git_integration/            # Git operations
 │   └── commit_extractor.py     # Extract commits, diffs
 ├── llm_integration/            # LLM communication
@@ -630,10 +679,11 @@ kernel_review_agent.py          # CLI entry point
 │   ├── prompt_loader.py        # Load and adapt prompts
 │   └── subsystem_matcher.py    # Match diffs to subsystems
 ├── analysis/                   # Review workflow
-│   └── workflow.py             # 5-task orchestration
+│   └── workflow.py             # 5-task orchestration (with confidence scoring)
 ├── output/                     # Report generation
-│   ├── formatter.py            # LKML plain-text formatting
-│   └── metadata.py             # JSON metadata
+│   ├── formatter.py            # LKML plain-text formatting (shows confidence)
+│   ├── json_formatter.py       # Structured JSON output (review-inline.json)
+│   └── metadata.py             # Summary JSON metadata (review-metadata.json)
 └── prompts/                    # Review protocols (from review-prompts by Chris Mason)
     ├── review-core.md          # Core review protocol
     ├── technical-patterns.md   # Bug patterns
@@ -646,10 +696,10 @@ kernel_review_agent.py          # CLI entry point
 1. **Context Gathering**: Extract changed functions, files, and structures
 2. **Change Categorization**: Break changes into categories (control-flow, resource-management, etc.)
 3. **Regression Analysis**: Apply bug patterns and subsystem-specific checks
-4. **Verification**: Eliminate false positives using concrete evidence requirements (optional, use `--skip-verification` to disable)
-5. **Reporting**: Generate LKML-compliant report and JSON metadata
+4. **Verification**: An adversarial "skeptical maintainer" persona attempts to disprove each finding. Clear false positives are discarded; surviving findings receive a confidence label (`high`, `medium`, or `possible`). Optional — use `--skip-verification` to disable.
+5. **Reporting**: Generate LKML-compliant plain text (`review-inline.txt`), structured JSON (`review-inline.json`), and summary metadata (`review-metadata.json`)
 
-**Note**: The verification step (Task 4) can be skipped with `--skip-verification` for faster reviews at the cost of potentially more false positives.
+**Note**: The verification step (Task 4) can be skipped with `--skip-verification` for faster reviews at the cost of potentially more false positives (and no confidence labels).
 
 ## Subsystem Coverage
 
