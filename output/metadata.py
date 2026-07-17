@@ -179,7 +179,7 @@ class MetadataGenerator:
         if count == 0:
             return "none", "No issues found"
 
-        # Look for keywords in findings to determine severity
+        # Look for severity in findings to determine overall severity
         high_severity_keywords = [
             "use-after-free", "double-free", "null pointer", "crash",
             "memory corruption", "deadlock", "race condition"
@@ -194,6 +194,16 @@ class MetadataGenerator:
         has_medium = False
 
         for finding in findings:
+            # Prefer explicit severity field set by the LLM
+            sev = finding.get('severity', '').lower()
+            if sev == 'high' or sev == 'urgent':
+                has_high = True
+                continue
+            if sev == 'medium':
+                has_medium = True
+                continue
+
+            # Fall back to keyword scan when severity field is absent
             message = finding.get('message', '').lower()
             issue_type = finding.get('type', '').lower()
             combined = message + " " + issue_type
