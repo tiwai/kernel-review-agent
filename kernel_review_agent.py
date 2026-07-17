@@ -195,7 +195,8 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
             prompts_dir=args.prompts_dir,
             prompt_set=args.prompt_set,
             model_name=args.model,
-            config_overrides=config_overrides
+            config_overrides=config_overrides,
+            upstream_review=getattr(args, 'upstream_review', False)
         )
 
         matcher = SubsystemMatcher(prompts_dir=args.prompts_dir, prompt_loader=prompts)
@@ -708,6 +709,14 @@ Examples:
     )
 
     parser.add_argument(
+        "--upstream-review",
+        action="store_true",
+        default=config.UPSTREAM_REVIEW,
+        help="Enable upstream review mode: check commit message quality, Fixes: tags, "
+             "and subjective code quality (default: disabled)"
+    )
+
+    parser.add_argument(
         "--max-tool-iterations",
         type=int,
         default=config.MAX_TOOL_ITERATIONS,
@@ -881,6 +890,7 @@ Examples:
         print(f"  Debug: {args.debug}")
         print(f"  Save prompts: {args.save_prompts}")
         print(f"  Skip verification: {args.skip_verification}")
+        print(f"  Upstream review: {args.upstream_review}")
         print(f"  Output directory: {args.output_dir}")
         print()
 
@@ -1021,7 +1031,8 @@ Examples:
             prompts_dir=args.prompts_dir,
             prompt_set=args.prompt_set,
             model_name=args.model,
-            config_overrides=config_overrides
+            config_overrides=config_overrides,
+            upstream_review=args.upstream_review
         )
 
         if args.verbose:

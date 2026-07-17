@@ -131,6 +131,9 @@ def load_configuration():
         'HOST_RESET_FALLBACK_MODEL': None,   # Fallback model (None = use provider default)
         'HOST_RESET_MAX_ATTEMPTS': 0,        # Max reset attempts per operation (0 = unlimited)
 
+        # Upstream review mode: enable commit message, Fixes: tag, and subjective checks
+        'UPSTREAM_REVIEW': False,
+
         # Output defaults
         'DEFAULT_OUTPUT_DIR': '.',
 
@@ -213,3 +216,4 @@ TIMESTAMPS = _config['TIMESTAMPS']
 ENABLE_HOST_RESET = _config['ENABLE_HOST_RESET']
 HOST_RESET_FALLBACK_MODEL = _config['HOST_RESET_FALLBACK_MODEL']
 HOST_RESET_MAX_ATTEMPTS = _config['HOST_RESET_MAX_ATTEMPTS']
+UPSTREAM_REVIEW = _config['UPSTREAM_REVIEW']

@@ -45,6 +45,21 @@ This directory contains Linux kernel review prompts derived from Chris Mason's r
    - ~3x smaller token budget (~5k vs ~15k)
    - Focuses on critical patterns: memory management, locking, RCU, scheduler, VFS
 
+4. **Conditional upstream review mode** (`--upstream-review` flag / `UPSTREAM_REVIEW` config):
+   - Default (off): code-only review, suppresses commit message, Fixes: tag, and subjective checks
+     via adaptation note in `PromptLoader.load_review_core()` — appropriate for downstream/backport review
+   - Upstream mode (on): adaptation note removed; `review-core.md`'s own gating logic takes effect,
+     enabling commit message quality, Fixes: tag detection/validation, and subjective checks
+   - Files added for upstream mode (not in upstream's gated list):
+     - `default/fixes-tag.md` — Fixes: tag format and SHA validation
+     - `default/missing-fixes-tag.md` — detect missing Fixes: tags on bug-fix commits
+     - `default/slop-indicators.md` — AI slop / code quality subjective checks
+     - `small/fixes-tag.md`, `small/missing-fixes-tag.md` — condensed versions
+     - `small/subsystem/subjective-review.md` — commit message validation for small models
+   - Excluded even in upstream mode:
+     - `lore-thread.md` — requires network access to lore.kernel.org
+     - Agent framework files (`agent/`, `skills/`, `slash-commands/`)
+
 ## Update Procedure
 
 When syncing with upstream:

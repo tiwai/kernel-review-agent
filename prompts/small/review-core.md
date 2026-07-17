@@ -49,6 +49,31 @@ Print: CHANGE-N: short description, sample code line
 
 **Kconfig check**: If patch modifies Kconfig/defconfig or adds CONFIG_* usage, verify dependencies, select safety, silent disable issues, and symbol existence.
 
+## Task 2.1: Commit Tag Verification (upstream review mode only)
+
+Skip this task unless subjective reviews are requested.
+
+1. Determine if this is a major bug fix (system instability, large perf regression,
+   user-visible behavior, security flaw). Output: `BUG FIX DETERMINATION: major/minor/not a bug fix`
+
+2. Decide whether to check for Fixes: tags:
+   - Not a bug fix → NO Fixes: tag check
+   - Minor bugs → NO Fixes: tag check
+   - Networking subsystem → NO Fixes: tag check
+   - Major bug in BPF → Fixes: tag check
+   - Major bug in any other subsystem → Fixes: tag check
+   - Subjective reviews on → Fixes: tag check
+     - Fixes: tag already in commit message → also load `fixes-tag.md`
+
+3. If checking: load `./missing-fixes-tag.md`
+   - If a missing tag was flagged, treat as a full regression
+
+## Task 2.2: Subjective Review (upstream review mode only)
+
+Skip this task unless subjective reviews are requested.
+
+Load `subsystem/subjective-review.md` for commit message quality checks.
+
 For each change category:
 1. **Control flow bugs**: New paths, edge cases, error handling gaps
 2. **Locking violations**: Missing locks, lock ordering, deadlocks

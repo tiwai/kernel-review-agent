@@ -14,7 +14,8 @@ class PromptLoader:
         prompts_dir: str = None,
         prompt_set: str = 'default',
         model_name: Optional[str] = None,
-        config_overrides: Optional[Dict[str, str]] = None
+        config_overrides: Optional[Dict[str, str]] = None,
+        upstream_review: bool = False
     ):
         """
         Initialize prompt loader with prompt-set support.
@@ -25,6 +26,9 @@ class PromptLoader:
             prompt_set: Explicit prompt set name or 'auto' for auto-detection
             model_name: Model name for auto-detection (if prompt_set='auto')
             config_overrides: Custom model→set mappings from config file
+            upstream_review: Enable upstream review mode (commit message quality,
+                            Fixes: tags, subjective checks). Default False for
+                            code-only downstream/backport review.
         """
         if prompts_dir is None:
             # Get the directory where this module is located
@@ -50,6 +54,8 @@ class PromptLoader:
 
         # Load metadata for this prompt set
         self.metadata = mapper.metadata.get('sets', {}).get(resolved_set, {})
+
+        self.upstream_review = upstream_review
 
     def _resolve_prompt_set_dir(self, prompt_set: str) -> str:
         """
@@ -113,17 +119,22 @@ class PromptLoader:
 
     def load_review_core(self) -> str:
         """
-        Load review-core.md adapted for code-only review.
+        Load review-core.md.
 
-        Modifications:
-        - Focus on code changes only
-        - Remove commit message tag evaluation
-        - Remove Fixes tag verification
-        - Remove lore thread checking
+        In default mode (upstream_review=False): prepends a code-only adaptation
+        note that suppresses commit message, Fixes: tag, and subjective checks —
+        appropriate for downstream/backport patch review.
+
+        In upstream review mode (upstream_review=True): loads the prompt as-is,
+        letting review-core.md's own gating logic control which optional checks
+        (subjective reviews, Fixes: tags) are performed.
         """
         content = self.load_file("review-core.md")
 
-        # Add adaptation note at the beginning
+        if self.upstream_review:
+            return content
+
+        # Add adaptation note for code-only (downstream/backport) review
         adaptation_note = """
 # ADAPTATION FOR CODE-ONLY REVIEW
 
