@@ -4,7 +4,7 @@ AI-powered agent for automated review of Linux kernel git commits. This agent an
 
 ## Features
 
-- **Code-focused analysis**: Reviews only code changes, ignoring commit message quality and tags
+- **Code-focused analysis**: Reviews code changes for regressions; optionally extends to commit message quality, Fixes: tags, and subjective checks with `--upstream-review`
 - **5-task review protocol**: Systematic approach based on Linux kernel review best practices
 - **Subsystem-aware**: Automatically loads relevant subsystem guides (RCU, MM, networking, BPF, etc.)
 - **False positive filtering**: Applies verification checks to eliminate false positives; surviving findings carry a confidence level (`high`/`medium`/`possible`)
@@ -507,6 +507,40 @@ Can also be set persistently in the config file:
 { "REEVALUATION_TIME_THRESHOLD": 60 }
 ```
 
+### Upstream Review Mode
+
+By default the agent focuses exclusively on code changes — appropriate for downstream and backport review where commit message quality and tag conformance are not the concern. For reviewing upstream commits directly, `--upstream-review` enables the additional checks that were intentionally omitted from the default mode:
+
+```bash
+# Review an upstream commit with full checks
+python kernel_review_agent.py HEAD --upstream-review
+
+# Combine with other options
+python kernel_review_agent.py HEAD~5..HEAD --upstream-review --verbose
+```
+
+**What `--upstream-review` enables:**
+
+- **Commit message validation**: Checks that the changelog describes the *why* (not just *what*), is complete, concise, and accurate relative to the diff
+- **Fixes: tag detection**: If the commit looks like a bug fix, searches git history for the introduced-by commit and flags a missing `Fixes:` tag as a regression
+- **Fixes: tag validation**: When a `Fixes:` tag is present, verifies SHA-1 length (≥12 chars), subject accuracy (`git log -1 --format=%s`), tag placement (sign-off area, above `---`), commit reachability (`git merge-base --is-ancestor`), and stable backport tagging
+- **Subjective code quality** (SR-* patterns): Code duplication, API consistency, naming conventions — flagged as gentle questions, never as hard bugs
+- **Slop detection**: Stylistic tells common in machine-generated or lightly-reviewed patches (redundant comments, verbose code, copy-paste duplication, dead code, churn) — flagged only in clusters, with a hard cap of 3 observations per patch
+
+**Fixes: tag gating rules** (same as upstream review-core.md):
+- Not a bug fix → no Fixes: check
+- Minor bug or networking subsystem → no Fixes: check
+- Major bug in BPF → check
+- Major bug in any other subsystem → check
+- Subjective review active → always check
+
+**Persistent configuration:**
+```json
+{ "UPSTREAM_REVIEW": true }
+```
+
+**Prompt sets**: Both `default` and `small` prompt sets support upstream review mode. The `small` set includes a condensed TASK 2.1 (commit tag verification) and simplified commit message validation.
+
 ```bash
 # Increase the maximum tool-call iterations per step
 python kernel_review_agent.py HEAD --max-tool-iterations 20
@@ -875,6 +909,9 @@ All options are optional. See `config.json.example` for a complete template.
 - `CONNECT_TIMEOUT`: Connection timeout in seconds (default: `10`)
 - `REEVALUATION_TIME_THRESHOLD`: Re-run review if no issues found within this many seconds; `0` disables (default: `0`)
 
+**Review Mode:**
+- `UPSTREAM_REVIEW`: Enable upstream review mode (commit message, Fixes: tags, subjective checks) (default: `false`)
+
 **Other:**
 - `MAX_RETRIES`: Number of retries (default: `1`)
 - `RETRY_DELAY`: Initial retry delay in seconds (default: `1.0`)
@@ -892,8 +929,8 @@ See [CONFIGURATION.md](CONFIGURATION.md) for complete documentation.
 
 - **Merge commits**: Skipped (too complex for automated analysis)
 - **Binary files**: Ignored (focuses on text-based code changes)
-- **Commit messages**: Not evaluated (code-only review)
-- **Fixes tags**: Not verified (downstream focus)
+- **Commit messages**: Not evaluated by default (code-only review); use `--upstream-review` to enable
+- **Fixes tags**: Not verified by default (downstream focus); use `--upstream-review` to enable
 
 ## Troubleshooting
 

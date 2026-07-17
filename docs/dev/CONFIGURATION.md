@@ -158,6 +158,27 @@ This sets `CATEGORIZE_MAX_TOKENS`, `ANALYZE_MAX_TOKENS`, and `VERIFY_MAX_TOKENS`
 
 - `TRUNCATION_WARNING_THRESHOLD`: Warn when response uses this % of tokens (default: `0.95` / 95%)
 
+### Review Mode
+
+```json
+{
+  "UPSTREAM_REVIEW": false
+}
+```
+
+- `UPSTREAM_REVIEW`: Enable upstream review mode (default: `false`)
+
+  When `false` (default): code-only review focused on regressions — appropriate for downstream
+  or backport patch review. Commit message quality, Fixes: tags, and subjective checks are
+  suppressed.
+
+  When `true`: full upstream review — enables commit message validation, Fixes: tag detection
+  and format verification, subjective code quality checks, and AI slop detection. Equivalent
+  to passing `--upstream-review` on the command line.
+
+  See the "Upstream Review Mode" section in README.md for the complete list of checks and
+  their gating rules.
+
 ### Output and Debug
 
 ```json

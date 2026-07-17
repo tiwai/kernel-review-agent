@@ -32,6 +32,9 @@
   "DEFAULT_OUTPUT_DIR": ".",
   "DEBUG_DUMP_DIR": "debug_dumps",
 
+  "_comment_upstream_review": "Upstream review mode: enable commit message quality, Fixes: tag detection/validation, and subjective checks (default: false)",
+  "UPSTREAM_REVIEW": false,
+
   "_comment_repos": "Backport verification: path to upstream Linux kernel and optional intermediate patch repository",
   "PATCH_REPO": null,
   "UPSTREAM_REPO": null,
