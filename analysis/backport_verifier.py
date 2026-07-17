@@ -50,8 +50,8 @@ class BackportVerifier:
 
         Args:
             upstream_repo: MultiRepoExtractor for upstream Linux kernel
-            kernel_source_repo: MultiRepoExtractor for SUSE kernel-source (to
-                resolve Git-commit: tags from suse-commit: references)
+            kernel_source_repo: MultiRepoExtractor for intermediate patch repository (to
+                resolve upstream references from distro-commit tags)
             verbose: Enable verbose output
             debug: Enable debug output
         """
@@ -506,15 +506,15 @@ class BackportVerifier:
         Returns:
             BackportComparison if upstream commit found, None otherwise
         """
-        # Resolve upstream commit SHA: prefer direct Git-commit: tag, then fall
-        # back to looking it up from the kernel-source patch via suse-commit: tag.
+        # Resolve upstream commit SHA: prefer direct upstream reference, then fall
+        # back to looking it up from the patch repo via distro-commit tag.
         upstream_sha = downstream.upstream_commit
-        if not upstream_sha and downstream.suse_commit and self.kernel_source_repo:
+        if not upstream_sha and downstream.distro_commit and self.kernel_source_repo:
             if self.verbose:
-                print(f"  No Git-commit tag; resolving via kernel-source "
-                      f"suse-commit {downstream.suse_commit[:12]}...")
+                print(f"  No upstream reference; resolving via patch repo "
+                      f"distro-commit {downstream.distro_commit[:12]}...")
             patch_info = self.kernel_source_repo.extract_patch_from_commit(
-                downstream.suse_commit
+                downstream.distro_commit
             )
             if patch_info and patch_info.get('git_commit'):
                 upstream_sha = patch_info['git_commit']

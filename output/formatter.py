@@ -23,7 +23,7 @@ class ReportFormatter:
         commit: Commit,
         findings: List[Dict],
         summary: str = None,
-        suse_verification: Dict = None,
+        upstream_verification: Dict = None,
         backport_comparison=None,
         elapsed_time: float = None,
         is_patch: bool = False,
@@ -38,7 +38,7 @@ class ReportFormatter:
             commit: Commit object
             findings: List of finding dictionaries
             summary: Optional 1-2 sentence summary
-            suse_verification: Optional SUSE upstream verification result
+            upstream_verification: Optional upstream verification result
             elapsed_time: Optional elapsed time in seconds
             is_patch: True if reviewing a patch file (omits commit SHA)
             model_name: Optional LLM model name used for review
@@ -62,29 +62,29 @@ class ReportFormatter:
         lines.append(commit.subject)
         lines.append("")
 
-        # Git-commit tag (if present in patch, skip suse-commit in patch mode)
+        # Git-commit tag (if present in patch, skip distro-commit in patch mode)
         if is_patch:
             if commit.upstream_commit:
                 lines.append(f"Git-commit: {commit.upstream_commit}")
                 lines.append("")
         else:
-            # SUSE commit information (if present in commit mode)
-            if commit.suse_commit or commit.upstream_commit:
-                if commit.suse_commit:
-                    lines.append(f"suse-commit: {commit.suse_commit}")
+            # Distro and upstream commit information (if present in commit mode)
+            if commit.distro_commit or commit.upstream_commit:
+                if commit.distro_commit:
+                    lines.append(f"distro-commit: {commit.distro_commit}")
                 if commit.upstream_commit:
                     lines.append(f"Git-commit: {commit.upstream_commit}")
             lines.append("")
 
-        # Verified upstream commit (if SUSE verification was performed)
-        if suse_verification and suse_verification.get('upstream_commit'):
-            upstream = suse_verification['upstream_commit']
+        # Verified upstream commit (if upstream verification was performed)
+        if upstream_verification and upstream_verification.get('upstream_commit'):
+            upstream = upstream_verification['upstream_commit']
             lines.append(f"Verified-against: {upstream.sha}")
             lines.append(f"Upstream-subject: {upstream.subject}")
 
             # Show upstream/downstream classification if available
-            findings_in_upstream = len(suse_verification.get('findings_in_upstream', []))
-            findings_downstream = len(suse_verification.get('findings_only_downstream', []))
+            findings_in_upstream = len(upstream_verification.get('findings_in_upstream', []))
+            findings_downstream = len(upstream_verification.get('findings_only_downstream', []))
 
             if findings_in_upstream > 0 or findings_downstream > 0:
                 lines.append(f"Findings-in-upstream: {findings_in_upstream}")

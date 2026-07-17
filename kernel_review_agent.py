@@ -200,13 +200,13 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
 
         matcher = SubsystemMatcher(prompts_dir=args.prompts_dir, prompt_loader=prompts)
 
-        # Initialize kernel-source extractor for commit message enhancement
+        # Initialize patch repo extractor for commit message enhancement
         kernel_source_extractor = None
         if not getattr(args, 'patch', False):
-            suse_kernel_source = getattr(args, 'suse_kernel_source', None) or config.SUSE_KERNEL_SOURCE_REPO
-            if suse_kernel_source:
+            patch_repo = getattr(args, 'patch_repo', None) or config.PATCH_REPO
+            if patch_repo:
                 kernel_source_extractor = MultiRepoExtractor(
-                    repo_path=suse_kernel_source,
+                    repo_path=patch_repo,
                     verbose=args.verbose,
                     debug=args.debug
                 )
@@ -216,10 +216,10 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
         # Initialize upstream repo extractor for backport verification
         upstream_repo_extractor = None
         if not getattr(args, 'patch', False):
-            upstream_linux = getattr(args, 'upstream_linux', None) or config.UPSTREAM_LINUX_REPO
-            if upstream_linux:
+            upstream_repo = getattr(args, 'upstream_repo', None) or config.UPSTREAM_REPO
+            if upstream_repo:
                 upstream_repo_extractor = MultiRepoExtractor(
-                    repo_path=upstream_linux,
+                    repo_path=upstream_repo,
                     verbose=args.verbose,
                     debug=args.debug
                 )
@@ -263,7 +263,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                 verbose=args.verbose,
                 debug=args.debug,
                 skip_verification=args.skip_verification,
-                suse_verifier=None,  # TODO: pass if needed
+                upstream_verifier=None,  # TODO: pass if needed
                 enable_tools=True,
                 upstream_repo=upstream_repo_extractor,
                 kernel_source_repo=kernel_source_extractor,
@@ -277,7 +277,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                 verbose=args.verbose,
                 debug=args.debug,
                 skip_verification=args.skip_verification,
-                suse_verifier=None,
+                upstream_verifier=None,
                 propose_fixes=args.propose_fixes,
                 max_tool_iterations=args.max_tool_iterations,
                 stop_after=args.stop_after
@@ -349,7 +349,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                     report_text = formatter.format_report(
                         commit, result.findings,
                         summary=result.summary,
-                        suse_verification=result.suse_verification,
+                        upstream_verification=result.upstream_verification,
                         backport_comparison=result.backport_comparison,
                         elapsed_time=elapsed_time,
                         is_patch=is_patch,
@@ -360,7 +360,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                     report_json = json_formatter.format_report(
                         commit, result.findings,
                         summary=result.summary,
-                        suse_verification=result.suse_verification,
+                        upstream_verification=result.upstream_verification,
                         backport_comparison=result.backport_comparison,
                         elapsed_time=elapsed_time,
                         is_patch=is_patch,
@@ -384,7 +384,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                         pre_verification_metadata = metadata_gen.generate_pre_verification_metadata(
                             commit,
                             result.pre_verification_findings,
-                            suse_verification=result.suse_verification,
+                            upstream_verification=result.upstream_verification,
                             categories=result.categories,
                             subsystems=result.subsystems_loaded,
                             code_context_formatted=result.code_context_formatted
@@ -741,14 +741,18 @@ Examples:
     )
 
     parser.add_argument(
-        "--suse-kernel-source",
-        help="Path to SUSE kernel-source git repository (enables SUSE upstream verification)"
+        "--patch-repo",
+        help="Path to an intermediate patch repository for commit message extraction and distro-commit resolution"
     )
 
     parser.add_argument(
-        "--upstream-linux",
-        help="Path to upstream Linux kernel git repository (optional, for SUSE verification)"
+        "--upstream-repo",
+        help="Path to upstream Linux kernel git repository for backport comparison"
     )
+
+    # Deprecated aliases for backward compatibility
+    parser.add_argument("--suse-kernel-source", dest="patch_repo", help=argparse.SUPPRESS)
+    parser.add_argument("--upstream-linux", dest="upstream_repo", help=argparse.SUPPRESS)
 
     parser.add_argument(
         "--enable-tools",
@@ -1036,42 +1040,42 @@ Examples:
     # Initialize SubsystemMatcher with prompt loader for subsystem filtering
     matcher = SubsystemMatcher(prompts_dir=args.prompts_dir, prompt_loader=prompts)
 
-    # Initialize kernel-source extractor for commit message enhancement
+    # Initialize patch repo extractor for commit message enhancement
     kernel_source_extractor = None
-    suse_kernel_source = args.suse_kernel_source or config.SUSE_KERNEL_SOURCE_REPO
+    patch_repo = args.patch_repo or config.PATCH_REPO
 
-    if suse_kernel_source and not args.patch:
+    if patch_repo and not args.patch:
         kernel_source_extractor = MultiRepoExtractor(
-            repo_path=suse_kernel_source,
+            repo_path=patch_repo,
             verbose=args.verbose,
             debug=args.debug
         )
 
         if kernel_source_extractor.is_available():
             if args.verbose:
-                print(f"Kernel-source commit message enhancement enabled")
+                print(f"Patch repo commit message enhancement enabled")
         else:
             if args.debug:
-                print(f"Kernel-source repository not available: {suse_kernel_source}")
+                print(f"Patch repository not available: {patch_repo}")
             kernel_source_extractor = None
 
-    # Initialize git commit extractor with kernel-source enhancement
+    # Initialize git commit extractor with optional patch repo enhancement
     git = CommitExtractor(
         verbose=args.verbose,
         debug=args.debug,
         kernel_source_extractor=kernel_source_extractor
     )
 
-    # Initialize SUSE verifier if configured (skip in patch mode)
-    suse_verifier = None
+    # Initialize upstream verifier if configured (skip in patch mode)
+    upstream_verifier = None
     upstream_repo_extractor = None
     if not args.patch:
-        upstream_linux = args.upstream_linux or config.UPSTREAM_LINUX_REPO
+        upstream_repo = args.upstream_repo or config.UPSTREAM_REPO
 
         # Create upstream repository extractor for backport verification
-        if upstream_linux:
+        if upstream_repo:
             upstream_repo_extractor = MultiRepoExtractor(
-                repo_path=upstream_linux,
+                repo_path=upstream_repo,
                 verbose=args.verbose,
                 debug=args.debug
             )
@@ -1080,33 +1084,36 @@ Examples:
                 if args.verbose:
                     print(f"Upstream Linux repository available for backport verification")
                 if args.debug:
-                    print(f"Upstream repo: {upstream_linux}")
+                    print(f"Upstream repo: {upstream_repo}")
             else:
                 if args.debug:
-                    print(f"Upstream Linux repository not available: {upstream_linux}")
+                    print(f"Upstream Linux repository not available: {upstream_repo}")
                 upstream_repo_extractor = None
 
-        if suse_kernel_source:
+        if patch_repo or upstream_repo:
             if args.debug:
-                print(f"Initializing SUSE verifier")
-                print(f"  kernel-source: {suse_kernel_source}")
-                print(f"  upstream: {upstream_linux}")
+                print(f"Initializing upstream verifier")
+                if patch_repo:
+                    print(f"  patch-repo: {patch_repo}")
+                if upstream_repo:
+                    print(f"  upstream: {upstream_repo}")
 
-            from analysis import SuseUpstreamVerifier
-            suse_verifier = SuseUpstreamVerifier(
-                kernel_source_repo=suse_kernel_source,
-                upstream_repo=upstream_linux,
+            from analysis import UpstreamVerifier
+            upstream_verifier = UpstreamVerifier(
+                kernel_source_repo=patch_repo,
+                upstream_repo=upstream_repo,
                 llm_client=llm,
                 verbose=args.verbose,
                 debug=args.debug
             )
 
-            if not suse_verifier.is_enabled():
-                print(f"Warning: SUSE kernel-source repository not available: {suse_kernel_source}",
-                      file=sys.stderr)
-                suse_verifier = None
+            if not upstream_verifier.is_enabled():
+                if patch_repo:
+                    print(f"Warning: Patch repository not available: {patch_repo}",
+                          file=sys.stderr)
+                upstream_verifier = None
             elif args.verbose:
-                print(f"SUSE upstream verification enabled")
+                print(f"Upstream verification enabled")
 
     # Create workflow (hybrid with tools or standard)
     if args.enable_tools:
@@ -1165,7 +1172,7 @@ Examples:
                 verbose=args.verbose,
                 debug=args.debug,
                 skip_verification=args.skip_verification,
-                suse_verifier=suse_verifier,
+                upstream_verifier=upstream_verifier,
                 enable_tools=True,
                 upstream_repo=upstream_repo_extractor,
                 kernel_source_repo=kernel_source_extractor,
@@ -1188,7 +1195,7 @@ Examples:
             verbose=args.verbose,
             debug=args.debug,
             skip_verification=args.skip_verification,
-            suse_verifier=suse_verifier,
+            upstream_verifier=upstream_verifier,
             propose_fixes=args.propose_fixes,
             max_tool_iterations=args.max_tool_iterations,
             stop_after=args.stop_after
@@ -1261,7 +1268,7 @@ Examples:
                     commit,
                     result.findings,
                     summary=result.summary,
-                    suse_verification=result.suse_verification,
+                    upstream_verification=result.upstream_verification,
                     elapsed_time=elapsed_time,
                     model_name=args.model,
                     input_tokens=result.input_tokens,
@@ -1271,7 +1278,7 @@ Examples:
                     commit,
                     result.findings,
                     summary=result.summary,
-                    suse_verification=result.suse_verification,
+                    upstream_verification=result.upstream_verification,
                     elapsed_time=elapsed_time,
                     model_name=args.model,
                     input_tokens=result.input_tokens,
@@ -1580,7 +1587,7 @@ Examples:
                     commit,
                     result.findings,
                     summary=result.summary,
-                    suse_verification=result.suse_verification,
+                    upstream_verification=result.upstream_verification,
                     backport_comparison=result.backport_comparison,
                     elapsed_time=elapsed_time,
                     is_patch=True,  # Flag for patch mode formatting
@@ -1592,7 +1599,7 @@ Examples:
                     commit,
                     result.findings,
                     summary=result.summary,
-                    suse_verification=result.suse_verification,
+                    upstream_verification=result.upstream_verification,
                     backport_comparison=result.backport_comparison,
                     elapsed_time=elapsed_time,
                     is_patch=True,
@@ -1741,7 +1748,7 @@ Examples:
                     pre_verification_metadata = metadata_gen.generate_pre_verification_metadata(
                         commit,
                         result.pre_verification_findings,
-                        suse_verification=result.suse_verification,
+                        upstream_verification=result.upstream_verification,
                         categories=result.categories,
                         subsystems=result.subsystems_loaded,
                         code_context_formatted=result.code_context_formatted
@@ -1758,7 +1765,7 @@ Examples:
                     commit,
                     result.findings,
                     summary=result.summary,
-                    suse_verification=result.suse_verification,
+                    upstream_verification=result.upstream_verification,
                     backport_comparison=result.backport_comparison,
                     elapsed_time=elapsed_time,
                     model_name=args.model,
@@ -1769,7 +1776,7 @@ Examples:
                     commit,
                     result.findings,
                     summary=result.summary,
-                    suse_verification=result.suse_verification,
+                    upstream_verification=result.upstream_verification,
                     backport_comparison=result.backport_comparison,
                     elapsed_time=elapsed_time,
                     model_name=args.model,

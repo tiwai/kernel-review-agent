@@ -32,7 +32,11 @@
   "DEFAULT_OUTPUT_DIR": ".",
   "DEBUG_DUMP_DIR": "debug_dumps",
 
-  "_comment5": "SUSE kernel upstream verification",
-  "SUSE_KERNEL_SOURCE_REPO": "/path/to/kernel-source",
-  "UPSTREAM_LINUX_REPO": "/path/to/linux"
+  "_comment_repos": "Backport verification: path to upstream Linux kernel and optional intermediate patch repository",
+  "PATCH_REPO": null,
+  "UPSTREAM_REPO": null,
+
+  "_comment_compat": "Deprecated aliases for PATCH_REPO and UPSTREAM_REPO (still accepted for backward compatibility)",
+  "SUSE_KERNEL_SOURCE_REPO": null,
+  "UPSTREAM_LINUX_REPO": null
 }

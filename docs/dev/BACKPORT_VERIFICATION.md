@@ -58,14 +58,14 @@ To enable backport verification, configure the upstream Linux repository path:
 **Option 1: Command-line**
 ```bash
 kernel_review_agent.py <commit> \
-    --upstream-linux /path/to/linux.git \
+    --upstream-repo /path/to/linux.git \
     --host localhost --port 8080
 ```
 
 **Option 2: Config file** (`~/.config/kernel-review-agent/config.json`)
 ```json
 {
-    "UPSTREAM_LINUX_REPO": "/path/to/upstream/linux.git"
+    "UPSTREAM_REPO": "/path/to/upstream/linux.git"
 }
 ```
 

@@ -50,8 +50,8 @@ The `review-pre-verification.json` file now includes all information needed for 
   ],
   "subsystems": ["drivers/net", "mm"],
   "code_context": "Full source code context including function definitions and callers",
-  "suse_upstream_verification": {
-    "suse_commit_sha": "suse-commit-sha",
+  "upstream_verification": {
+    "distro_commit_sha": "distro-commit-sha",
     "upstream_commit_sha": "upstream-commit-sha",
     "upstream_subject": "Upstream commit subject",
     "findings_in_upstream": 1,
@@ -93,7 +93,7 @@ The `review-pre-verification.json` file is **not modified** during re-verificati
 1. Task 0: Gather context (code context, changed functions)
 2. Task 1: Categorize changes
 3. Task 2: Analyze for regressions → **Save to review-pre-verification.json**
-4. Task 2.5: SUSE upstream verification (if applicable)
+4. Task 2.5: Upstream verification (if applicable)
 5. Task 3: Verify findings (false-positive elimination)
 6. Task 4: Generate summary
 7. Task 5: Propose fixes (optional)

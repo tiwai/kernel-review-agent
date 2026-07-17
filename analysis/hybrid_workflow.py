@@ -34,9 +34,9 @@ class HybridReviewWorkflow(ReviewWorkflow):
             llm_client: ToolEnabledClient instance
             enable_tools: Enable tool calling for deep-dive checks
             upstream_repo: MultiRepoExtractor for upstream Linux kernel (for backport verification)
-            kernel_source_repo: MultiRepoExtractor for SUSE kernel-source (to resolve
-                Git-commit: tags from suse-commit: references when the downstream commit
-                carries only a suse-commit: tag)
+            kernel_source_repo: MultiRepoExtractor for intermediate patch repository (to resolve
+                upstream references from distro-commit tags when the downstream commit
+                carries only a distro-commit tag)
             *args, **kwargs: Passed to ReviewWorkflow
         """
         super().__init__(llm_client, *args, **kwargs)

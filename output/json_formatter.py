@@ -12,7 +12,7 @@ class JSONReportFormatter:
         commit: Commit,
         findings: List[Dict],
         summary: str = None,
-        suse_verification: Dict = None,
+        upstream_verification: Dict = None,
         backport_comparison=None,
         elapsed_time: float = None,
         is_patch: bool = False,
@@ -31,7 +31,7 @@ class JSONReportFormatter:
             commit: Commit object
             findings: List of finding dicts (may include 'confidence' field)
             summary: Optional 1-2 sentence summary
-            suse_verification: Optional SUSE upstream verification result
+            upstream_verification: Optional upstream verification result
             backport_comparison: Optional BackportComparison object
             elapsed_time: Optional elapsed time in seconds
             is_patch: True if reviewing a patch file (omits commit SHA)
@@ -50,22 +50,22 @@ class JSONReportFormatter:
         report["author"] = commit.author
         report["subject"] = commit.subject
 
-        if not is_patch and commit.suse_commit:
-            report["suse-commit"] = commit.suse_commit
+        if not is_patch and commit.distro_commit:
+            report["distro-commit"] = commit.distro_commit
 
         if commit.upstream_commit:
             report["upstream-commit"] = commit.upstream_commit
 
-        # SUSE upstream verification
-        if suse_verification and suse_verification.get('upstream_commit'):
-            upstream = suse_verification['upstream_commit']
-            suse_block: Dict = {
+        # Upstream verification
+        if upstream_verification and upstream_verification.get('upstream_commit'):
+            upstream = upstream_verification['upstream_commit']
+            uv_block: Dict = {
                 "upstream-commit": upstream.sha,
                 "upstream-subject": upstream.subject,
-                "findings-in-upstream": len(suse_verification.get('findings_in_upstream', [])),
-                "findings-downstream-only": len(suse_verification.get('findings_only_downstream', [])),
+                "findings-in-upstream": len(upstream_verification.get('findings_in_upstream', [])),
+                "findings-downstream-only": len(upstream_verification.get('findings_only_downstream', [])),
             }
-            report["suse-verification"] = suse_block
+            report["upstream-verification"] = uv_block
 
         # Backport comparison
         if backport_comparison and backport_comparison.has_upstream:

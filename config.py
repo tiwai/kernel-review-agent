@@ -137,9 +137,12 @@ def load_configuration():
         # Debug options
         'DEBUG_DUMP_DIR': 'debug_dumps',
 
-        # SUSE kernel-source repository paths
-        'SUSE_KERNEL_SOURCE_REPO': None,  # Path to SUSE kernel-source git repo
-        'UPSTREAM_LINUX_REPO': None,      # Path to upstream Linux kernel repo (optional)
+        # Repository paths for backport verification
+        'PATCH_REPO': None,               # Path to intermediate patch repository (e.g. kernel-source)
+        'UPSTREAM_REPO': None,            # Path to upstream Linux kernel repo
+        # Deprecated aliases (still accepted for backward compatibility)
+        'SUSE_KERNEL_SOURCE_REPO': None,
+        'UPSTREAM_LINUX_REPO': None,
     }
 
     # Load system-wide config
@@ -159,6 +162,12 @@ def load_configuration():
     user_config = load_config_file(user_config_path)
     if user_config:
         config.update(user_config)
+
+    # Resolve backward-compat keys: prefer new generic names, fall back to old SUSE-specific names
+    if not config.get('PATCH_REPO') and config.get('SUSE_KERNEL_SOURCE_REPO'):
+        config['PATCH_REPO'] = config['SUSE_KERNEL_SOURCE_REPO']
+    if not config.get('UPSTREAM_REPO') and config.get('UPSTREAM_LINUX_REPO'):
+        config['UPSTREAM_REPO'] = config['UPSTREAM_LINUX_REPO']
 
     return config
 
@@ -192,6 +201,9 @@ LLM_TIMEOUT = _config['LLM_TIMEOUT']
 CONNECT_TIMEOUT = _config['CONNECT_TIMEOUT']
 DEFAULT_OUTPUT_DIR = _config['DEFAULT_OUTPUT_DIR']
 DEBUG_DUMP_DIR = _config['DEBUG_DUMP_DIR']
+PATCH_REPO = _config['PATCH_REPO']
+UPSTREAM_REPO = _config['UPSTREAM_REPO']
+# Deprecated aliases kept for backward compatibility
 SUSE_KERNEL_SOURCE_REPO = _config['SUSE_KERNEL_SOURCE_REPO']
 UPSTREAM_LINUX_REPO = _config['UPSTREAM_LINUX_REPO']
 REEVALUATION_TIME_THRESHOLD = _config['REEVALUATION_TIME_THRESHOLD']

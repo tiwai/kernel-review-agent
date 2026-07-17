@@ -172,9 +172,9 @@ python kernel_review_agent.py --patch *.patch --output-dir ./reviews/
 - Arguments are treated as patch file paths (not commit SHAs)
 - Patch is analyzed as if applied on top of current HEAD
 - Output files are flat: `review-inline.txt`, `review-inline.json`, and `review-metadata.json` in output directory
-- SUSE kernel-source verification is skipped
-- If patch contains `Git-commit:` tag, upstream commit is checked
-- Commit SHA and SUSE-commit fields are omitted from output
+- Upstream verification is skipped
+- If patch contains an upstream reference tag, upstream commit is checked
+- Commit SHA and distro-commit fields are omitted from output
 
 **Supported patch formats:**
 - Git format-patch output (with headers)
@@ -288,33 +288,65 @@ Can also be enabled persistently in the config file:
 { "TIMESTAMPS": true }
 ```
 
-### SUSE Kernel Integration
+### Backport Verification
 
-For SUSE downstream kernel repositories, the agent can enhance commit messages by automatically extracting detailed patch descriptions from the kernel-source repository:
+The agent supports automatic backport comparison for stable tree and downstream kernel reviews.
+
+#### Stable Tree Review
+
+For stable kernel trees (e.g., linux-6.6.y), commits carrying `(cherry picked from commit <sha>)` or `[ Upstream commit <sha> ]` markers are automatically detected:
 
 ```bash
-# Enable commit message enhancement from kernel-source
-python kernel_review_agent.py HEAD --suse-kernel-source /path/to/kernel-source
+# Review stable tree backports with automatic upstream comparison
+python kernel_review_agent.py HEAD --upstream-repo /path/to/linux.git
 
-# Or configure in ~/.config/kernel-review-agent/config.json
+# Review a range of stable tree backports
+python kernel_review_agent.py v6.6.50..v6.6.51 --upstream-repo /path/to/linux.git
+
+# Configure upstream repo persistently
 {
-  "SUSE_KERNEL_SOURCE_REPO": "/path/to/kernel-source"
+  "UPSTREAM_REPO": "/path/to/linux"
 }
 ```
 
-**How it works:**
-- When reviewing a downstream kernel commit with a `suse-commit:` tag and short message (< 10 lines)
-- The agent looks up the corresponding kernel-source commit
-- If that commit creates a patch in `patches.suse/` or `patches.kabi/`
+The agent automatically detects these upstream reference formats in commit messages:
+- `(cherry picked from commit <sha>)` — git cherry-pick standard
+- `[ Upstream commit <sha> ]` — stable kernel standard header
+- `commit <sha> upstream` — stable kernel alternate form
+- `Git-commit: <sha>` — explicit tag form
+
+#### Upstream Feature Branch Review
+
+For reviewing commits on an upstream feature branch (no flags needed):
+
+```bash
+cd /path/to/linux.git
+python kernel_review_agent.py feature-branch~10..feature-branch
+```
+
+#### Distro Downstream Kernel Review
+
+For distros that maintain an intermediate patch repository (e.g., SUSE kernel-source):
+
+```bash
+# Enable commit message enhancement from patch repository
+python kernel_review_agent.py HEAD \
+  --patch-repo /path/to/kernel-source \
+  --upstream-repo /path/to/linux.git
+
+# Or configure in ~/.config/kernel-review-agent/config.json
+{
+  "PATCH_REPO": "/path/to/kernel-source",
+  "UPSTREAM_REPO": "/path/to/linux"
+}
+```
+
+**How patch repo enhancement works:**
+- When reviewing a downstream commit with a distro-specific commit tag (e.g. `suse-commit:`) and short message (< 10 lines)
+- The agent looks up the corresponding patch repository commit
+- If that commit creates a patch in a `patches.*/` directory
 - The detailed patch description is extracted and included in all LLM prompts
 - This provides much richer context than the minimal downstream commit message
-
-**Benefits:**
-- **Better LLM understanding**: Patch description (problem explanation, fix rationale, Fixes: tags) is passed to the LLM for all review stages
-- More accurate analysis with complete problem description
-- Upstream commit references automatically extracted
-- Better distinction between intentional fixes and potential regressions
-- No manual lookup of patch files needed
 
 **Example:**
 - Downstream commit: "Fix use after free (bsc#1259701)"
@@ -556,8 +588,8 @@ output_dir/
 
 **Differences from commit mode:**
 - No commit SHA field in metadata (since there's no actual commit)
-- No SUSE-commit field (SUSE verification skipped in patch mode)
-- `upstream-commit` field included if `Git-commit:` tag found in patch
+- No distro-commit field (upstream verification skipped in patch mode)
+- `upstream-commit` field included if an upstream reference tag is found in patch
 - Files written directly to output directory
 
 ### 1. `review-inline.txt`
@@ -659,12 +691,12 @@ Structured JSON metadata:
 - `issue-severity-explanation`: Human-readable severity description
 - `review-time-seconds`: Time taken to complete the review (optional)
 - `model`: LLM model name used for the review (optional)
-- `suse-commit`: SUSE kernel-source commit SHA (optional, SUSE downstream only)
+- `distro-commit`: Distro-specific intermediate commit SHA (optional, distro downstream only)
 - `upstream-commit`: Upstream commit SHA (optional, if available)
 
 ### 4. `review-pre-verification.json` (optional)
 
-Generated only when SUSE upstream verification is enabled and finds issues in both upstream and downstream code. Contains all findings before the false-positive verification step, with classification of which findings are present in upstream vs. downstream-only.
+Generated when upstream verification is enabled and finds issues in both upstream and downstream code. Contains all findings before the false-positive verification step, with classification of which findings are present in upstream vs. downstream-only.
 
 ## Architecture
 

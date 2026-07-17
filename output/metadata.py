@@ -65,9 +65,9 @@ class MetadataGenerator:
             metadata["output-tokens"] = output_tokens
             metadata["total-tokens"] = input_tokens + output_tokens
 
-        # Include SUSE commit IDs if present (not in patch mode)
-        if not is_patch and commit.suse_commit:
-            metadata["suse-commit"] = commit.suse_commit
+        # Include distro commit ID if present (not in patch mode)
+        if not is_patch and commit.distro_commit:
+            metadata["distro-commit"] = commit.distro_commit
 
         # Include upstream commit if present
         if commit.upstream_commit:
@@ -92,7 +92,7 @@ class MetadataGenerator:
         self,
         commit: Commit,
         findings: List[Dict],
-        suse_verification: Optional[Dict] = None,
+        upstream_verification: Optional[Dict] = None,
         categories: Optional[List[Dict]] = None,
         subsystems: Optional[List[str]] = None,
         code_context_formatted: Optional[str] = None
@@ -101,13 +101,13 @@ class MetadataGenerator:
         Generate metadata for pre-verification findings (before Task 3).
 
         This captures findings from Task 2 before false-positive check,
-        including SUSE upstream verification results and all information
+        including upstream verification results and all information
         needed to re-verify the findings later.
 
         Args:
             commit: Commit object
             findings: Findings from Task 2 (before verification)
-            suse_verification: SUSE upstream verification result
+            upstream_verification: Upstream verification result
             categories: Change categories from Task 1 (optional, for re-verification)
             subsystems: Matched subsystems (optional, for re-verification)
             code_context_formatted: Formatted code context (optional, for re-verification)
@@ -139,21 +139,21 @@ class MetadataGenerator:
         if code_context_formatted:
             metadata['code_context'] = code_context_formatted
 
-        # Add SUSE upstream information if available
-        if suse_verification:
-            suse_info = {
-                "suse_commit_sha": commit.suse_commit,
+        # Add upstream verification information if available
+        if upstream_verification:
+            uv_info = {
+                "distro_commit_sha": commit.distro_commit,
                 "upstream_commit_sha": None,
-                "findings_in_upstream": len(suse_verification.get('findings_in_upstream', [])),
-                "findings_downstream_only": len(suse_verification.get('findings_only_downstream', []))
+                "findings_in_upstream": len(upstream_verification.get('findings_in_upstream', [])),
+                "findings_downstream_only": len(upstream_verification.get('findings_only_downstream', []))
             }
 
-            if suse_verification.get('upstream_commit'):
-                upstream = suse_verification['upstream_commit']
-                suse_info['upstream_commit_sha'] = upstream.sha
-                suse_info['upstream_subject'] = upstream.subject
+            if upstream_verification.get('upstream_commit'):
+                upstream = upstream_verification['upstream_commit']
+                uv_info['upstream_commit_sha'] = upstream.sha
+                uv_info['upstream_subject'] = upstream.subject
 
-            metadata['suse_upstream_verification'] = suse_info
+            metadata['upstream_verification'] = uv_info
 
         # Add upstream commit if present
         if commit.upstream_commit:

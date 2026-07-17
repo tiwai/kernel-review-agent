@@ -16,9 +16,8 @@ class Commit:
     message: str
     diff: str
     files: List[str]
-    # SUSE integration fields
-    suse_commit: Optional[str] = None       # Extracted from suse-commit: tag
-    upstream_commit: Optional[str] = None   # Extracted from Git-commit: tag in SUSE repo
+    distro_commit: Optional[str] = None     # Extracted from distro-specific tag (e.g. suse-commit:)
+    upstream_commit: Optional[str] = None   # Extracted from upstream reference tag
 
 
 class CommitExtractor:
@@ -99,6 +98,49 @@ class CommitExtractor:
             match = re.match(pattern, line, re.IGNORECASE)
             if match:
                 return match.group(1)
+
+        return None
+
+    def extract_upstream_sha(self, text: str) -> Optional[str]:
+        """
+        Extract upstream Linux commit SHA from commit message or patch content.
+
+        Tries multiple patterns in priority order:
+          1. Git-commit: <sha>                    (explicit tag, distro-style)
+          2. (cherry picked from commit <sha>)    (git cherry-pick message)
+          3. cherry picked from commit <sha>      (without parens variant)
+          4. [ Upstream commit <sha> ]            (stable kernel standard)
+          5. commit <sha> upstream                (stable kernel alternate)
+
+        Args:
+            text: Commit message or patch content to search
+
+        Returns:
+            Upstream commit SHA or None if not found
+        """
+        # Priority 1: explicit Git-commit: tag
+        sha = self.extract_tag(text, 'Git-commit')
+        if sha:
+            return sha
+
+        # Priority 2 & 3: cherry-pick message (with or without parens)
+        for pattern in [
+            r'\(cherry picked from commit ([0-9a-fA-F]{12,40})\)',
+            r'cherry picked from commit ([0-9a-fA-F]{12,40})',
+        ]:
+            m = re.search(pattern, text, re.IGNORECASE)
+            if m:
+                return m.group(1)
+
+        # Priority 4: stable kernel standard header
+        m = re.search(r'\[ Upstream commit ([0-9a-fA-F]{12,40}) \]', text, re.IGNORECASE)
+        if m:
+            return m.group(1)
+
+        # Priority 5: stable kernel alternate form
+        m = re.search(r'\bcommit ([0-9a-fA-F]{12,40}) upstream\b', text, re.IGNORECASE)
+        if m:
+            return m.group(1)
 
         return None
 
@@ -183,22 +225,22 @@ class CommitExtractor:
         message_match = re.search(r'\n\n(.*)', output, re.DOTALL)
         message = message_match.group(1).strip() if message_match else ""
 
-        # Extract SUSE tags early — needed before deciding how to get the diff
-        suse_commit_sha = self.extract_tag(message, 'suse-commit')
-        git_commit_sha = self.extract_tag(message, 'Git-commit')
+        # Extract distro and upstream tags early — needed before deciding how to get the diff
+        distro_commit_sha = self.extract_tag(message, 'suse-commit')
+        git_commit_sha = self.extract_upstream_sha(message)
 
         # Check if commit is too large to review directly, and fall back to
-        # the kernel-source patch when a suse-commit tag is available.
+        # the patch repo commit when a distro-commit tag is available.
         diff = None
-        if self.kernel_source_extractor and suse_commit_sha:
+        if self.kernel_source_extractor and distro_commit_sha:
             is_oversized, file_count, line_count = self._is_oversized_commit(sha)
             if is_oversized:
                 if self.verbose:
                     print(f"  Commit {sha[:12]} is too large to review directly "
                           f"({file_count} files, {line_count} lines). "
-                          f"Using kernel-source patch from suse-commit {suse_commit_sha[:12]}.")
+                          f"Using patch repo commit {distro_commit_sha[:12]}.")
 
-                patch_info = self.kernel_source_extractor.extract_patch_from_commit(suse_commit_sha)
+                patch_info = self.kernel_source_extractor.extract_patch_from_commit(distro_commit_sha)
                 if patch_info and patch_info.get('patch_content'):
                     diff = patch_info['patch_content']
                     files = self._extract_files_from_diff(diff)
@@ -220,14 +262,14 @@ class CommitExtractor:
             files = self._extract_files_from_diff(diff)
 
             # Try to enhance commit message from kernel-source patch if applicable
-            if self.kernel_source_extractor and suse_commit_sha:
+            if self.kernel_source_extractor and distro_commit_sha:
                 non_empty_lines = [line for line in message.split('\n') if line.strip()]
                 if len(non_empty_lines) < 10:
                     if self.debug:
-                        print(f"Commit has short message ({len(non_empty_lines)} lines) and suse-commit tag")
-                        print(f"Looking up kernel-source commit: {suse_commit_sha[:12]}")
+                        print(f"Commit has short message ({len(non_empty_lines)} lines) and distro-commit tag")
+                        print(f"Looking up patch repo commit: {distro_commit_sha[:12]}")
 
-                    patch_info = self.kernel_source_extractor.extract_patch_from_commit(suse_commit_sha)
+                    patch_info = self.kernel_source_extractor.extract_patch_from_commit(distro_commit_sha)
 
                     if patch_info and patch_info.get('message'):
                         if self.verbose:
@@ -248,8 +290,8 @@ class CommitExtractor:
             message=message,
             diff=diff,
             files=files,
-            suse_commit=suse_commit_sha,
-            upstream_commit=git_commit_sha  # Direct Git-commit tag if present
+            distro_commit=distro_commit_sha,
+            upstream_commit=git_commit_sha
         )
 
     def _extract_files_from_diff(self, diff: str) -> List[str]:
@@ -331,8 +373,8 @@ class CommitExtractor:
         # Extract files from diff
         files = self._extract_files_from_diff(diff)
 
-        # Extract Git-commit tag if present in the patch
-        git_commit_sha = self.extract_tag(patch_content, 'Git-commit')
+        # Extract upstream commit SHA if present in the patch
+        git_commit_sha = self.extract_upstream_sha(patch_content)
 
         # Create pseudo-commit object for patch
         # Use patch filename as pseudo-SHA
@@ -347,7 +389,7 @@ class CommitExtractor:
             message=message,
             diff=diff,
             files=files,
-            suse_commit=None,  # No suse-commit for patches
+            distro_commit=None,
             upstream_commit=git_commit_sha
         )
 
@@ -444,11 +486,14 @@ class MultiRepoExtractor:
             files = self.extractor._extract_files_from_diff(diff)
 
             # Extract tags
-            # suse-commit appears in commit message
-            suse_commit = self.extractor.extract_tag(message, 'suse-commit')
+            # distro-specific commit tag appears in commit message
+            distro_commit = self.extractor.extract_tag(message, 'suse-commit')
 
-            # Git-commit appears in the diff (as "+Git-commit: <sha>" in patch files)
+            # Upstream SHA appears in the diff (as "+Git-commit: <sha>" in patch files)
+            # or in the commit message itself
             git_commit = self.extractor.extract_tag_from_diff(diff, 'Git-commit')
+            if not git_commit:
+                git_commit = self.extractor.extract_upstream_sha(message)
 
             return Commit(
                 sha=sha,
@@ -458,8 +503,8 @@ class MultiRepoExtractor:
                 message=message,
                 diff=diff,
                 files=files,
-                suse_commit=suse_commit,
-                upstream_commit=git_commit  # Git-commit tag from SUSE repo diff
+                distro_commit=distro_commit,
+                upstream_commit=git_commit
             )
 
         except subprocess.CalledProcessError:
@@ -467,9 +512,9 @@ class MultiRepoExtractor:
 
     def extract_patch_from_commit(self, commit_sha: str) -> Optional[dict]:
         """
-        Extract patch file content from a kernel-source commit.
+        Extract patch file content from a patch repository commit.
 
-        Looks for newly created patch files in patches.suse/ or patches.kabi/
+        Looks for newly created patch files in any patches.*/ subdirectory
         and extracts their content including headers, description, and diff.
 
         Args:
@@ -504,7 +549,7 @@ class MultiRepoExtractor:
 
             for line in diff.split('\n'):
                 # Detect the start of a new patch file section
-                match = re.match(r'^\+\+\+ b/(patches\.(?:suse|kabi)/[^\s]+\.patch)', line)
+                match = re.match(r'^\+\+\+ b/(patches\.[^/]+/[^\s]+\.patch)', line)
                 if match:
                     # Save the previous patch if any
                     if current_patch_path and current_patch_lines:
@@ -512,7 +557,7 @@ class MultiRepoExtractor:
                     current_patch_path = match.group(1)
                     current_patch_lines = []
                     if self.debug:
-                        print(f"Found patch file in kernel-source commit: {current_patch_path}")
+                        print(f"Found patch file in patch repo commit: {current_patch_path}")
                     continue
 
                 if current_patch_path:
@@ -566,7 +611,7 @@ class MultiRepoExtractor:
                 full_message = '\n'.join(message_lines) if message_lines else None
 
             if self.debug and (subject or full_message):
-                print(f"Extracted patch description from {current_patch_path or 'kernel-source commit'}")
+                print(f"Extracted patch description from {current_patch_path or 'patch repo commit'}")
                 print(f"  Subject: {subject}")
                 if git_commit:
                     print(f"  Git-commit: {git_commit}")
