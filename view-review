@@ -5,7 +5,7 @@ View a kernel review result from review-inline.json.
 Usage:
   view-review <commit-dir>
   view-review <review-inline.json>
-  view-review --min-confidence medium <commit-dir>
+  view-review --min-confidence 0.7 <commit-dir>
   view-review --no-diff <commit-dir>
 """
 
@@ -15,7 +15,6 @@ import os
 import sys
 import textwrap
 
-CONFIDENCE_ORDER = {"possible": 0, "medium": 1, "high": 2}
 LINE_WIDTH = 78
 
 
@@ -36,13 +35,17 @@ def resolve_json_path(path: str) -> str:
     sys.exit(f"Error: path not found: {path}")
 
 
-def confidence_rank(finding: dict) -> int:
-    return CONFIDENCE_ORDER.get(finding.get("confidence", "possible"), 0)
+def confidence_value(finding: dict) -> float:
+    raw = finding.get("confidence", 0.0)
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return 0.0
 
 
-def render(data: dict, min_confidence: str, show_diff: bool) -> str:
+def render(data: dict, min_confidence: float, show_diff: bool) -> str:
     lines = []
-    min_rank = CONFIDENCE_ORDER.get(min_confidence, 0)
+    min_rank = min_confidence
 
     # Header
     if data.get("commit"):
@@ -111,7 +114,7 @@ def render(data: dict, min_confidence: str, show_diff: bool) -> str:
 
     # Findings (filtered by confidence)
     findings = data.get("findings", [])
-    visible = [f for f in findings if confidence_rank(f) >= min_rank]
+    visible = [f for f in findings if confidence_value(f) >= min_rank]
 
     if not visible:
         if findings:
@@ -132,7 +135,7 @@ def render(data: dict, min_confidence: str, show_diff: bool) -> str:
     for i, finding in enumerate(visible, 1):
         ftype = finding.get("type", "")
         severity = finding.get("severity", "")
-        confidence = finding.get("confidence", "")
+        raw_conf = finding.get("confidence", "")
         upstream_status = finding.get("upstream_status", "")
 
         header_parts = []
@@ -140,7 +143,11 @@ def render(data: dict, min_confidence: str, show_diff: bool) -> str:
             header_parts.append(f"type: {ftype}")
         if severity:
             header_parts.append(f"severity: {severity}")
-        if confidence:
+        if raw_conf != "" and raw_conf is not None:
+            try:
+                confidence = f"{float(raw_conf):.2f}"
+            except (TypeError, ValueError):
+                confidence = str(raw_conf)
             header_parts.append(f"confidence: {confidence}")
         if upstream_status:
             header_parts.append(f"upstream: {upstream_status}")
@@ -180,9 +187,10 @@ def main():
     )
     parser.add_argument(
         "--min-confidence",
-        choices=["possible", "medium", "high"],
-        default="possible",
-        help="Minimum confidence level to display (default: possible)"
+        type=float,
+        default=0.0,
+        metavar="THRESHOLD",
+        help="Minimum confidence score to display, 0.0–1.0 (default: 0.0)"
     )
     parser.add_argument(
         "--no-diff",

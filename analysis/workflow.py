@@ -1002,7 +1002,7 @@ COMPLETE SOURCE CODE CONTEXT FOR VERIFICATION:
 {context["code_context_formatted"]}
 """
 
-            user_prompt = f"""IMPORTANT: Your response must be a valid JSON array. Return [] for a false positive, or [{{"...finding fields...", "confidence": "high|medium|possible"}}] for a real finding.
+            user_prompt = f"""IMPORTANT: Your response must be a valid JSON array. Return [] for a false positive, or [{{"...finding fields...", "confidence": 0.0}}] for a real finding.
 
 Task: As a skeptical maintainer, verify if this specific finding is a REAL BUG or a FALSE POSITIVE.
 
@@ -1017,12 +1017,13 @@ FINDING TO VERIFY:
 Rules:
 1. Use the False Positive Prevention Guide strictly.
 2. If this is clearly a FALSE POSITIVE (defensive programming, kernel invariant prevents it, hallucination), return [].
-3. Otherwise return the finding (preserving all original fields) with a "confidence" field added:
-   - "high": You are certain this is a real regression
-   - "medium": You believe this is likely real but have some uncertainty
-   - "possible": You have significant doubts but a human should review it
+3. Otherwise return the finding (preserving all original fields) with a "confidence" field set to a scalar between 0.0 and 1.0:
+   - 0.9–1.0: You are certain this is a real regression
+   - 0.6–0.8: You believe this is likely real but have some uncertainty
+   - 0.3–0.5: You have significant doubts but a human should review it
+   - Below 0.3: Very weak signal; return [] instead
 
-Example format: [{{"category": "CHANGE-1", "type": "...", "message": "...", "evidence": "...", "severity": "...", "confidence": "high"}}]
+Example format: [{{"category": "CHANGE-1", "type": "...", "message": "...", "evidence": "...", "severity": "...", "confidence": 0.85}}]
 
 JSON array (empty [] if false positive):"""
 

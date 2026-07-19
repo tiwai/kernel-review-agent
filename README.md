@@ -7,7 +7,7 @@ AI-powered agent for automated review of Linux kernel git commits. This agent an
 - **Code-focused analysis**: Reviews code changes for regressions; optionally extends to commit message quality, Fixes: tags, and subjective checks with `--upstream-review`
 - **5-task review protocol**: Systematic approach based on Linux kernel review best practices
 - **Subsystem-aware**: Automatically loads relevant subsystem guides (RCU, MM, networking, BPF, etc.)
-- **False positive filtering**: Applies verification checks to eliminate false positives; surviving findings carry a confidence level (`high`/`medium`/`possible`)
+- **False positive filtering**: Applies verification checks to eliminate false positives; surviving findings carry a confidence score (0.0–1.0)
 - **LKML-compliant output**: Generates plain text reports suitable for mailing lists
 - **Structured JSON output**: `review-inline.json` captures all finding fields (type, severity, confidence, message, evidence) for tooling integration and post-processing
 - **Viewer**: `view-review` renders `review-inline.json` as human-readable text with optional confidence filtering
@@ -652,7 +652,7 @@ Review-model: gpt-4
 > @@ -1234,5 +1234,8 @@ static int shrink_page_list(...)
 > +    folio = folio_alloc();
 
-[Finding 1 — type: memory-leak, severity: medium, confidence: high]
+[Finding 1 — type: memory-leak, severity: medium, confidence: 0.90]
 Can this leak the folio? The allocation is not freed in the error path
 when the function returns early...
 ```
@@ -672,7 +672,7 @@ Structured JSON containing all review data in machine-readable form. Suitable fo
       "category": "CHANGE-1",
       "type": "memory-leak",
       "severity": "medium",
-      "confidence": "high",
+      "confidence": 0.90,
       "message": "Can this leak the folio? The allocation is not freed in the error path...",
       "evidence": "folio = folio_alloc();\nif (err)\n    return err;  // folio not freed"
     }
@@ -685,18 +685,18 @@ Structured JSON containing all review data in machine-readable form. Suitable fo
 }
 ```
 
-**Finding confidence levels** (set by the verification step):
-- `high`: The model is certain this is a real regression
-- `medium`: The model believes this is likely real but has some uncertainty
-- `possible`: Significant doubt remains; human review is recommended
+**Finding confidence scores** (set by the verification step, range 0.0–1.0):
+- `0.9–1.0`: The model is certain this is a real regression
+- `0.6–0.8`: The model believes this is likely real but has some uncertainty
+- `0.3–0.5`: Significant doubt remains; human review is recommended
 
 **Viewing and filtering** with `view-review`:
 ```bash
 # Render as human-readable text
 view-review ./reviews/ab/abc123.../
 
-# Show only high-confidence findings
-view-review --min-confidence high ./reviews/ab/abc123.../
+# Show only high-confidence findings (score >= 0.7)
+view-review --min-confidence 0.7 ./reviews/ab/abc123.../
 
 # Dump raw JSON
 view-review --json ./reviews/ab/abc123.../
@@ -762,10 +762,10 @@ view-review                     # Viewer: render review-inline.json as text
 1. **Context Gathering**: Extract changed functions, files, and structures
 2. **Change Categorization**: Break changes into categories (control-flow, resource-management, etc.)
 3. **Regression Analysis**: Apply bug patterns and subsystem-specific checks
-4. **Verification**: An adversarial "skeptical maintainer" persona attempts to disprove each finding. Clear false positives are discarded; surviving findings receive a confidence label (`high`, `medium`, or `possible`). Optional — use `--skip-verification` to disable.
+4. **Verification**: An adversarial "skeptical maintainer" persona attempts to disprove each finding. Clear false positives are discarded; surviving findings receive a confidence score (0.0–1.0). Optional — use `--skip-verification` to disable.
 5. **Reporting**: Generate LKML-compliant plain text (`review-inline.txt`), structured JSON (`review-inline.json`), and summary metadata (`review-metadata.json`)
 
-**Note**: The verification step (Task 4) can be skipped with `--skip-verification` for faster reviews at the cost of potentially more false positives (and no confidence labels).
+**Note**: The verification step (Task 4) can be skipped with `--skip-verification` for faster reviews at the cost of potentially more false positives (and no confidence scores).
 
 ## Subsystem Coverage
 

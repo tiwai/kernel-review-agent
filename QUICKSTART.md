@@ -115,7 +115,7 @@ cat review-inline-abc123def456.txt
 
 # View via the structured JSON (with confidence filtering)
 view-review ./reviews/ab/abc123.../
-view-review --min-confidence high ./reviews/ab/abc123.../
+view-review --min-confidence 0.7 ./reviews/ab/abc123.../
 
 # View the summary metadata
 cat review-metadata-abc123def456.json
@@ -180,10 +180,10 @@ Each commit review produces three files in `<output-dir>/<sha[:2]>/<sha>/`:
 2. **review-inline.json** — Structured JSON with all finding fields (type, severity, confidence, message, evidence); use with `view-review` or your own tooling
 3. **review-metadata.json** — Summary stats: issue count, severity score, timing, token usage
 
-**Confidence levels** on findings:
-- `high` — model is certain this is a real regression
-- `medium` — model believes it is likely real
-- `possible` — model has doubts; human review recommended
+**Confidence scores** on findings (0.0–1.0):
+- `0.9–1.0` — model is certain this is a real regression
+- `0.6–0.8` — model believes it is likely real
+- `0.3–0.5` — model has doubts; human review recommended
 
 ## Next Steps
 
@@ -199,7 +199,7 @@ Each commit review produces three files in `<output-dir>/<sha[:2]>/<sha>/`:
 2. **Enable verbose mode**: See what the agent is doing with `--verbose`
 3. **Review recent commits**: The agent works best on fresh, focused changes
 4. **Check subsystem matching**: Verify relevant guides are loaded
-5. **Filter by confidence**: Use `view-review --min-confidence medium <dir>` to focus on findings the model is more certain about
+5. **Filter by confidence**: Use `view-review --min-confidence 0.6 <dir>` to focus on findings the model is more certain about
 6. **Iterate on findings**: Use the reports to improve code quality
 
 ## Support
