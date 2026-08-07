@@ -1298,8 +1298,12 @@ Patches:"""
 
         # Check for upstream/downstream split
         if upstream_verification:
-            in_upstream = len(upstream_verification.get('findings_in_upstream', []))
-            downstream_only = len(upstream_verification.get('findings_only_downstream', []))
+            def _count(val):
+                return val if isinstance(val, int) else len(val)
+            in_upstream = _count(upstream_verification.get('findings_in_upstream', []))
+            # Support both key variants (old JSON used 'findings_downstream_only')
+            downstream_only = _count(upstream_verification.get('findings_only_downstream',
+                upstream_verification.get('findings_downstream_only', [])))
 
             if downstream_only > 0:
                 return (f"This commit has {count} potential issues, "
