@@ -2,6 +2,7 @@
 
 import json
 import re
+import subprocess
 import sys
 from typing import List, Dict, Optional
 from dataclasses import dataclass
@@ -44,7 +45,8 @@ class ReviewWorkflow:
         upstream_verifier: Optional['UpstreamVerifier'] = None,
         propose_fixes: bool = False,
         max_tool_iterations: int = None,
-        stop_after: Optional[str] = None
+        stop_after: Optional[str] = None,
+        git_dir: str = '.'
     ):
         """
         Initialize review workflow.
@@ -60,6 +62,7 @@ class ReviewWorkflow:
             propose_fixes: Generate fix patch proposals for verified findings
             max_tool_iterations: Max tool-call iterations per step (None = use config default)
             stop_after: Stop workflow after stage ('categorize', 'analyze', 'verify', or None for full)
+            git_dir: Path to the git repository (used for file-existence checks)
         """
         self.llm = llm_client
         self.prompts = prompt_loader
@@ -71,6 +74,7 @@ class ReviewWorkflow:
         self.propose_fixes = propose_fixes
         self.max_tool_iterations = max_tool_iterations if max_tool_iterations is not None else config.MAX_TOOL_ITERATIONS
         self.stop_after = stop_after
+        self.git_dir = git_dir
 
     def reverify_from_json(self, json_path: str) -> ReviewResult:
         """
@@ -1060,40 +1064,61 @@ JSON array (empty [] if false positive):"""
 
     def _verify_evidence_physical_existence(self, finding: Dict, context: Dict, commit: Commit) -> bool:
         """
-        Hallucination Pre-Pass: Deterministically verify that cited code/variables
+        Hallucination Pre-Pass: Deterministically verify that cited code symbols
         actually exist in the context or diff.
+
+        Two checks, both structural (no text understanding required):
+
+        1. Code-symbol check: every underscore-containing identifier cited in the
+           finding's message or evidence must appear somewhere in the diff or code
+           context.  Underscore identifiers are unambiguously C symbols, not prose
+           words, so any cited one that is absent is a hallucinated symbol.
+
+        2. File-path check: any path-like token (word/word…/word.c|h) that refers
+           to a file NOT in the commit's changed-files list is verified with
+           git ls-files.  If the file does not exist in the tree the finding is
+           almost certainly hallucinated.
         """
+        # Combine message + evidence so we catch hallucinations stated in either field
+        message = finding.get('message', '')
         evidence = finding.get('evidence', '')
-        # Handle both string and list types for evidence (LLM might return either)
         if isinstance(evidence, list):
             evidence = '\n'.join(str(item) for item in evidence)
-        if not evidence:
-            return True # No evidence to verify, let the LLM handle it
-
-        # Extract potential identifiers (words) from evidence
-        identifiers = re.findall(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', evidence)
-        # Filter out C keywords and short common names
-        kernel_keywords = {'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'return', 'goto', 'break', 'continue', 'struct', 'union', 'enum', 'typedef', 'void', 'int', 'long', 'unsigned', 'signed', 'char', 'short', 'float', 'double', 'bool', 'sizeof', 'static', 'inline', 'extern', 'const', 'volatile', 'NULL', 'true', 'false'}
-        potential_vars = [i for i in identifiers if i not in kernel_keywords and len(i) > 2]
-        
-        if not potential_vars:
+        combined = message + "\n" + evidence
+        if not combined.strip():
             return True
 
-        # Search for these identifiers in diff and code context
         full_text = commit.diff + "\n" + context.get("code_context_formatted", "")
-        
-        # We want to see at least SOME of the mentioned variables/functions
-        # Small models often hallucinate completely non-existent struct members or functions
-        match_count = 0
-        for var in set(potential_vars[:10]): # Check top 10 identifiers
-            if var in full_text:
-                match_count += 1
-        
-        # If we found at least one of the unique identifiers, it's likely not a total hallucination
-        # If we found none of them, it's highly suspicious
-        if match_count == 0 and len(set(potential_vars)) > 0:
-            return False
-            
+        changed_files = set(commit.files)
+
+        # --- Check 1: code-symbol identifiers (contain underscore → C symbol) ---
+        # Extract only underscore-containing identifiers; these are never English prose.
+        code_symbols = set(re.findall(r'\b[a-zA-Z_][a-zA-Z0-9]*(?:_[a-zA-Z0-9_]+)+\b', combined))
+        for sym in code_symbols:
+            if sym not in full_text:
+                if self.verbose or self.debug:
+                    print(f"      [PRE-PASS] Hallucinated symbol '{sym}' not in context")
+                return False
+
+        # --- Check 2: file-path tokens not present in the diff ---
+        # Matches patterns like  drivers/char/mmtimer.c  net/wireless/pmsr.c
+        file_paths = set(re.findall(r'\b(?:[a-zA-Z0-9_]+/)+[a-zA-Z0-9_]+\.[ch]\b', combined))
+        for fpath in file_paths:
+            if fpath in changed_files:
+                continue  # Changed by this commit; fine
+            if fpath in full_text:
+                continue  # Already in code context; fine
+            # Check whether the file actually exists in the tree
+            result = subprocess.run(
+                ['git', 'ls-files', '--error-unmatch', fpath],
+                capture_output=True,
+                cwd=self.git_dir
+            )
+            if result.returncode != 0:
+                if self.verbose or self.debug:
+                    print(f"      [PRE-PASS] Hallucinated file path '{fpath}' not in tree")
+                return False
+
         return True
 
     def _propose_fixes(

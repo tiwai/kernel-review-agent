@@ -281,7 +281,8 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                 upstream_verifier=None,
                 propose_fixes=args.propose_fixes,
                 max_tool_iterations=args.max_tool_iterations,
-                stop_after=args.stop_after
+                stop_after=args.stop_after,
+                git_dir=os.getcwd()
             )
 
         formatter = ReportFormatter()
@@ -1209,7 +1210,8 @@ Examples:
             upstream_verifier=upstream_verifier,
             propose_fixes=args.propose_fixes,
             max_tool_iterations=args.max_tool_iterations,
-            stop_after=args.stop_after
+            stop_after=args.stop_after,
+            git_dir=os.getcwd()
         )
     formatter = ReportFormatter()
     json_formatter = JSONReportFormatter()
