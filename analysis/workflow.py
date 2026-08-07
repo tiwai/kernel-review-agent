@@ -1010,6 +1010,20 @@ COMPLETE SOURCE CODE CONTEXT FOR VERIFICATION:
 
 Task: As a skeptical maintainer, verify if this specific finding is a REAL BUG or a FALSE POSITIVE.
 
+## STEP 1 — GROUND THE EVIDENCE (mandatory, complete before any reasoning)
+
+Before applying any logic, locate every specific claim in the finding in the diff below.
+For EACH claim (symbol removed/added, function called, code path described):
+  a. Quote the EXACT lines from the diff that confirm it.
+  b. If you cannot find a verbatim quote in the diff or code context, mark that claim as UNVERIFIED.
+
+If ANY claim is UNVERIFIED, the finding contains a hallucination — return [].
+
+## STEP 2 — ADVERSARIAL REASONING
+
+Using ONLY the grounded evidence from Step 1, apply the False Positive Prevention Guide.
+Look for guard conditions, kernel invariants, and defensive programming patterns.
+
 {commit_context}
 
 {code_context_section}Commit diff:
@@ -1019,7 +1033,7 @@ FINDING TO VERIFY:
 {finding_text}
 
 Rules:
-1. Use the False Positive Prevention Guide strictly.
+1. Complete Step 1 before Step 2. Any unverified claim → return [].
 2. If this is clearly a FALSE POSITIVE (defensive programming, kernel invariant prevents it, hallucination), return [].
 3. Otherwise return the finding (preserving all original fields) with a "confidence" field set to a scalar between 0.0 and 1.0:
    - 0.9–1.0: You are certain this is a real regression
