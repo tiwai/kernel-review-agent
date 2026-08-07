@@ -802,7 +802,7 @@ Examples:
     # Redirect stdout and stderr to log file if requested
     if args.log_file:
         try:
-            log = open(args.log_file, 'w', buffering=1)
+            log = open(args.log_file, 'a', buffering=1)
             sys.stdout = log
             sys.stderr = log
         except OSError as e:
