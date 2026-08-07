@@ -144,15 +144,13 @@ class MetadataGenerator:
         if upstream_verification:
             uv_info = {
                 "distro_commit_sha": commit.distro_commit,
-                "upstream_commit_sha": None,
-                "findings_in_upstream": len(upstream_verification.get('findings_in_upstream', [])),
-                "findings_downstream_only": len(upstream_verification.get('findings_only_downstream', []))
+                "findings_in_upstream": upstream_verification.get('findings_in_upstream', []),
+                "findings_only_downstream": upstream_verification.get('findings_only_downstream', []),
             }
 
             if upstream_verification.get('upstream_commit'):
                 upstream = upstream_verification['upstream_commit']
-                uv_info['upstream_commit_sha'] = upstream.sha
-                uv_info['upstream_subject'] = upstream.subject
+                uv_info['upstream_commit'] = {"sha": upstream.sha, "subject": upstream.subject}
 
             metadata['upstream_verification'] = uv_info
 

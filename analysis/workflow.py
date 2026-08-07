@@ -145,6 +145,24 @@ class ReviewWorkflow:
         subsystems = pre_data.get('subsystems', [])
         upstream_verification = pre_data.get('upstream_verification', pre_data.get('suse_upstream_verification'))
 
+        # Reconstruct upstream_commit object so formatters can access .sha / .subject
+        if upstream_verification:
+            from types import SimpleNamespace
+            uc = upstream_verification.get('upstream_commit')
+            if isinstance(uc, dict):
+                upstream_verification['upstream_commit'] = SimpleNamespace(
+                    sha=uc['sha'], subject=uc.get('subject', ''))
+            elif upstream_verification.get('upstream_commit_sha'):
+                # Old format: flat fields
+                upstream_verification['upstream_commit'] = SimpleNamespace(
+                    sha=upstream_verification['upstream_commit_sha'],
+                    subject=upstream_verification.get('upstream_subject', ''))
+            # Old format stored findings as integer counts; convert to dummy lists
+            for key in ('findings_in_upstream', 'findings_only_downstream', 'findings_downstream_only'):
+                val = upstream_verification.get(key)
+                if isinstance(val, int):
+                    upstream_verification[key] = [None] * val
+
         # Reconstruct backport comparison if saved
         backport_comparison = None
         bp_data = pre_data.get('backport_comparison')
