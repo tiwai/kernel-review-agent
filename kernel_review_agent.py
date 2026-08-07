@@ -1271,7 +1271,9 @@ Examples:
                     subject=pre_data['subject'],
                     message=pre_data.get('message', pre_data['subject']),
                     diff=pre_data['diff'],
-                    files=pre_data.get('files', [])
+                    files=pre_data.get('files', []),
+                    upstream_commit=pre_data.get('upstream_commit'),
+                    distro_commit=pre_data.get('upstream_verification', pre_data.get('suse_upstream_verification', {})).get('distro_commit_sha')
                 )
 
                 # Determine output directory (same as original)
@@ -1283,6 +1285,7 @@ Examples:
                     result.findings,
                     summary=result.summary,
                     upstream_verification=result.upstream_verification,
+                    backport_comparison=result.backport_comparison,
                     elapsed_time=elapsed_time,
                     model_name=args.model,
                     input_tokens=result.input_tokens,
@@ -1293,6 +1296,7 @@ Examples:
                     result.findings,
                     summary=result.summary,
                     upstream_verification=result.upstream_verification,
+                    backport_comparison=result.backport_comparison,
                     elapsed_time=elapsed_time,
                     model_name=args.model,
                     input_tokens=result.input_tokens,
@@ -1303,7 +1307,8 @@ Examples:
                     elapsed_time=elapsed_time,
                     model_name=args.model,
                     input_tokens=result.input_tokens,
-                    output_tokens=result.output_tokens
+                    output_tokens=result.output_tokens,
+                    backport_comparison=result.backport_comparison
                 )
 
                 # Write output files (overwrite existing)
