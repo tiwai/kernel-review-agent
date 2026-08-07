@@ -1106,8 +1106,19 @@ JSON array (empty [] if false positive):"""
         changed_files = set(commit.files)
 
         # --- Check 1: code-symbol identifiers (contain underscore → C symbol) ---
-        # Extract only underscore-containing identifiers; these are never English prose.
-        code_symbols = set(re.findall(r'\b[a-zA-Z_][a-zA-Z0-9]*(?:_[a-zA-Z0-9_]+)+\b', combined))
+        # Evidence is a direct code quote: every underscore identifier must be real.
+        # Message is explanatory prose: uppercase constants (U32_MAX, GFP_ATOMIC, …)
+        # are kernel-wide vocabulary legitimately cited by name without appearing in
+        # the diff, so only check lowercase identifiers there.
+        def _is_uppercase_const(sym):
+            return bool(re.match(r'^[A-Z][A-Z0-9_]*$', sym))
+
+        evidence_syms = set(re.findall(r'\b[a-zA-Z_][a-zA-Z0-9]*(?:_[a-zA-Z0-9_]+)+\b', evidence))
+        message_syms = set(re.findall(r'\b[a-zA-Z_][a-zA-Z0-9]*(?:_[a-zA-Z0-9_]+)+\b', message))
+        # For message, skip all-uppercase constants — they're conceptual references.
+        message_syms = {s for s in message_syms if not _is_uppercase_const(s)}
+        code_symbols = evidence_syms | message_syms
+
         for sym in code_symbols:
             if sym not in full_text:
                 if self.verbose or self.debug:
