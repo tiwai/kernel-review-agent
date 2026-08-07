@@ -1267,6 +1267,7 @@ Examples:
                 commit = Commit(
                     sha=pre_data['sha'],
                     author=pre_data.get('author', 'Unknown'),
+                    date=pre_data.get('date', ''),
                     subject=pre_data['subject'],
                     message=pre_data.get('message', pre_data['subject']),
                     diff=pre_data['diff'],
