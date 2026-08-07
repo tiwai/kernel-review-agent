@@ -145,6 +145,25 @@ class ReviewWorkflow:
         subsystems = pre_data.get('subsystems', [])
         upstream_verification = pre_data.get('upstream_verification', pre_data.get('suse_upstream_verification'))
 
+        # Reconstruct backport comparison if saved
+        backport_comparison = None
+        bp_data = pre_data.get('backport_comparison')
+        if bp_data:
+            from analysis.backport_verifier import BackportComparison
+            backport_comparison = BackportComparison(
+                has_upstream=bp_data.get('has_upstream', False),
+                upstream_commit=bp_data.get('upstream_commit'),
+                differences_found=bp_data.get('differences_found', False),
+                needs_deep_review=bp_data.get('needs_deep_review', False),
+                file_path_changes=[tuple(x) for x in bp_data.get('file_path_changes', [])],
+                line_number_shifts=bp_data.get('line_number_shifts', []),
+                context_mismatches=bp_data.get('context_mismatches', []),
+                missing_hunks=bp_data.get('missing_hunks', []),
+                extra_hunks=bp_data.get('extra_hunks', []),
+                function_name_mismatches=bp_data.get('function_name_mismatches', []),
+                summary=bp_data.get('summary', ''),
+            )
+
         if self.verbose:
             print(f"[3/3] Re-verifying {len(findings)} findings...")
 
@@ -175,6 +194,7 @@ class ReviewWorkflow:
             summary=summary,
             subsystems_loaded=subsystems,
             upstream_verification=upstream_verification,
+            backport_comparison=backport_comparison,
             input_tokens=token_usage['prompt_tokens'],
             output_tokens=token_usage['completion_tokens'],
             pre_verification_findings=findings,

@@ -1770,7 +1770,8 @@ Examples:
                         upstream_verification=result.upstream_verification,
                         categories=result.categories,
                         subsystems=result.subsystems_loaded,
-                        code_context_formatted=result.code_context_formatted
+                        code_context_formatted=result.code_context_formatted,
+                        backport_comparison=result.backport_comparison
                     )
 
                     pre_verify_path = os.path.join(commit_dir, "review-pre-verification.json")

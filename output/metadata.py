@@ -95,7 +95,8 @@ class MetadataGenerator:
         upstream_verification: Optional[Dict] = None,
         categories: Optional[List[Dict]] = None,
         subsystems: Optional[List[str]] = None,
-        code_context_formatted: Optional[str] = None
+        code_context_formatted: Optional[str] = None,
+        backport_comparison=None
     ) -> Dict:
         """
         Generate metadata for pre-verification findings (before Task 3).
@@ -158,6 +159,22 @@ class MetadataGenerator:
         # Add upstream commit if present
         if commit.upstream_commit:
             metadata['upstream_commit'] = commit.upstream_commit
+
+        # Add backport comparison if available
+        if backport_comparison and backport_comparison.has_upstream:
+            metadata['backport_comparison'] = {
+                "has_upstream": backport_comparison.has_upstream,
+                "upstream_commit": backport_comparison.upstream_commit,
+                "differences_found": backport_comparison.differences_found,
+                "needs_deep_review": backport_comparison.needs_deep_review,
+                "file_path_changes": backport_comparison.file_path_changes,
+                "line_number_shifts": backport_comparison.line_number_shifts,
+                "context_mismatches": backport_comparison.context_mismatches,
+                "missing_hunks": backport_comparison.missing_hunks,
+                "extra_hunks": backport_comparison.extra_hunks,
+                "function_name_mismatches": backport_comparison.function_name_mismatches,
+                "summary": backport_comparison.summary,
+            }
 
         return metadata
 
