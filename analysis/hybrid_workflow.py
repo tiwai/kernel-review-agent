@@ -127,10 +127,19 @@ class HybridReviewWorkflow(ReviewWorkflow):
         if self.verbose:
             print(f"\n=== Phase 2: Deep-dive Verification ({len(result.findings)} findings) ===")
 
+        pre_phase2_count = len(result.findings)
         verified_findings = self._verify_findings_with_tools(commit, result.findings)
 
         # Update result with verified findings
         result.findings = verified_findings
+
+        # Keep summary and fix_patches consistent if Phase 2 changed the finding set
+        if len(verified_findings) != pre_phase2_count:
+            result.summary = self._generate_summary(
+                commit, verified_findings, result.upstream_verification
+            )
+            if not verified_findings:
+                result.fix_patches = None
 
         return result
 
@@ -174,21 +183,11 @@ class HybridReviewWorkflow(ReviewWorkflow):
             if 'use-after-free' in f.get('type', '').lower() or 'uaf' in f.get('type', '').lower():
                 specialized_verified_ids.add(id(f))
 
-        # 4. Generic Tool-Based Verification for all other findings
+        # 4. Pass through all other findings not handled by specialized verifiers.
+        # Phase 1 adversarial verification already confirmed these — re-checking with
+        # a coarser "REAL_BUG or HALLUCINATION" text-match introduces false negatives.
         other_findings = [f for f in findings if id(f) not in specialized_verified_ids]
-        
-        if other_findings and self.enable_tools:
-            if self.verbose:
-                print(f"  Verifying {len(other_findings)} other finding(s) with generic tool-based inspection...")
-            
-            for finding in other_findings:
-                if self._verify_finding_generic(commit, finding):
-                    verified.append(finding)
-                elif self.verbose:
-                    print(f"      → Discarded finding (could not verify evidence with tools): {finding.get('type')}")
-        else:
-            # If tools disabled, keep other findings (Task 3 in ReviewWorkflow will still run)
-            verified.extend(other_findings)
+        verified.extend(other_findings)
 
         return verified
 
