@@ -1,5 +1,6 @@
 """Hybrid workflow: Pre-loaded context + tool calling for deep-dive."""
 
+import json
 import re
 from typing import List, Dict, Optional
 
@@ -140,6 +141,27 @@ class HybridReviewWorkflow(ReviewWorkflow):
             )
             if not verified_findings:
                 result.fix_patches = None
+
+        # Phase 3: Free-form skeptic pass
+        if verified_findings:
+            if self.verbose:
+                print(f"\n=== Phase 3: Free-form Skeptic Pass ({len(verified_findings)} findings) ===")
+
+            pre_phase3_count = len(verified_findings)
+            verified_findings = self._free_form_skeptic_pass(commit, verified_findings)
+            result.findings = verified_findings
+
+            if len(verified_findings) != pre_phase3_count:
+                result.summary = self._generate_summary(
+                    commit, verified_findings, result.upstream_verification
+                )
+                if not verified_findings:
+                    result.fix_patches = None
+
+                if self.verbose:
+                    discarded = pre_phase3_count - len(verified_findings)
+                    print(f"      Discarded {discarded} as false positive(s); "
+                          f"{len(verified_findings)} remaining")
 
         return result
 
@@ -644,6 +666,89 @@ Be concise but show the trace."""
                             callbacks.append(callback)
 
         return callbacks
+
+    def _free_form_skeptic_pass(self, commit: Commit, findings: List[Dict]) -> List[Dict]:
+        """
+        Phase 3: Free-form expert skeptic re-verification.
+
+        Uses a minimal prompt so the model can apply genuine kernel expertise
+        without procedural overhead. Empirically catches false positives that
+        the structured Phase 1/2 checklist misses, because it avoids anchoring
+        bias and checklist-theater that cause the model to rationalize findings
+        rather than genuinely re-evaluate them.
+        """
+        if not findings:
+            return []
+
+        system_prompt = (
+            "You're a Linux kernel expert, and you've received review results from "
+            "another AI agent for a downstream kernel commit. Your task is to "
+            "re-verify whether the reported issues are really valid or not.\n\n"
+            "Use the git tools available to read source code, check function "
+            "implementations, trace call paths, verify lock state — whatever is "
+            "needed to make an informed judgment. Default to skepticism: only "
+            "keep a finding if you can confirm it with actual code evidence.\n\n"
+            "After your investigation, output a line in exactly this format:\n"
+            "VALID_FINDINGS: [<comma-separated 1-based finding numbers>]\n"
+            "Examples:\n"
+            "  VALID_FINDINGS: [1, 3]   <- findings 1 and 3 are real; 2 is a false positive\n"
+            "  VALID_FINDINGS: []        <- all are false positives"
+        )
+
+        findings_lines = []
+        for i, f in enumerate(findings, 1):
+            ftype = f.get('type', 'unknown')
+            msg = f.get('message', '')
+            evidence = f.get('evidence', '')
+            if isinstance(evidence, list):
+                evidence = '\n'.join(str(x) for x in evidence)
+            findings_lines.append(
+                f"Finding {i} [{ftype}]: {msg}\n"
+                f"  Evidence: {evidence[:500]}"
+            )
+
+        commit_context = f"Commit: {commit.sha}\nSubject: {commit.subject}"
+        if commit.message and commit.message.strip() and commit.message != commit.subject:
+            commit_context += f"\nCommit message:\n{commit.message}"
+
+        user_prompt = (
+            f"{commit_context}\n\n"
+            f"Diff:\n{commit.diff}\n\n"
+            f"Reported findings to re-verify:\n\n"
+            + "\n\n".join(findings_lines)
+            + "\n\nInvestigate each finding using git tools as needed, then output:\n"
+              "VALID_FINDINGS: [<numbers>]"
+        )
+
+        try:
+            response = self.llm.analyze_with_tools(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_iterations=self.max_tool_iterations,
+                max_tokens=4096
+            )
+
+            match = re.search(
+                r'VALID_FINDINGS:\s*(\[\s*(?:\d+(?:\s*,\s*\d+)*)?\s*\])', response
+            )
+            if match:
+                valid_indices = json.loads(match.group(1))
+                survived = [
+                    findings[idx - 1]
+                    for idx in valid_indices
+                    if isinstance(idx, int) and 1 <= idx <= len(findings)
+                ]
+                return survived
+
+            # No verdict marker found — be conservative and keep everything
+            if self.verbose or self.debug:
+                print("      [PHASE 3] No VALID_FINDINGS marker in response; keeping all findings")
+            return findings
+
+        except Exception as e:
+            if self.debug:
+                print(f"      [PHASE 3] Error: {e}; keeping all findings")
+            return findings
 
     def _format_backport_info_for_llm(self, comparison: BackportComparison) -> str:
         """
