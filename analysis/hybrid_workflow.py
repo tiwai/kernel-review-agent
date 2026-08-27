@@ -165,6 +165,28 @@ class HybridReviewWorkflow(ReviewWorkflow):
 
         return result
 
+    def _post_verify_hook(self, commit: Commit, result) -> object:
+        """Apply Phase 3 free-form skeptic pass after re-verification."""
+        if not result.findings:
+            return result
+
+        if self.verbose:
+            print(f"\n=== Phase 3: Free-form Skeptic Pass ({len(result.findings)} findings) ===")
+
+        pre_phase3_count = len(result.findings)
+        result.findings = self._free_form_skeptic_pass(commit, result.findings)
+
+        if len(result.findings) != pre_phase3_count:
+            result.summary = self._generate_summary(
+                commit, result.findings, result.upstream_verification
+            )
+            if self.verbose:
+                discarded = pre_phase3_count - len(result.findings)
+                print(f"      Discarded {discarded} as false positive(s); "
+                      f"{len(result.findings)} remaining")
+
+        return result
+
     def _verify_findings_with_tools(self, commit: Commit, findings: List[Dict]) -> List[Dict]:
         """
         Use tool calling to verify and enhance findings.

@@ -207,7 +207,7 @@ class ReviewWorkflow:
         if self.verbose:
             print(f"\nRe-verification complete: {len(verified)} issue(s) confirmed\n")
 
-        return ReviewResult(
+        result = ReviewResult(
             findings=verified,
             summary=summary,
             subsystems_loaded=subsystems,
@@ -219,6 +219,8 @@ class ReviewWorkflow:
             categories=categories,
             code_context_formatted=context.get('code_context_formatted')
         )
+        result = self._post_verify_hook(commit, result)
+        return result
 
     def reverify_update_from_json(self, inline_json_path: str) -> tuple:
         """
@@ -354,7 +356,29 @@ class ReviewWorkflow:
             categories=[],
             code_context_formatted=context.get('code_context_formatted')
         )
+
+        # Allow subclasses (e.g. HybridReviewWorkflow) to apply additional
+        # verification passes (e.g. Phase 3 free-form skeptic pass).
+        pre_hook_findings = list(result.findings)
+        result = self._post_verify_hook(commit, result)
+        if len(result.findings) < len(pre_hook_findings):
+            surviving_cats = {f.get('category') for f in result.findings}
+            extra_pruned = [
+                {**f, 'pruned_reason': 'phase3-skeptic-pass'}
+                for f in pre_hook_findings
+                if f.get('category') not in surviving_cats
+            ]
+            pruned.extend(extra_pruned)
+
         return result, pruned
+
+    def _post_verify_hook(self, commit: Commit, result: 'ReviewResult') -> 'ReviewResult':
+        """
+        Hook called after verification in reverify_from_json() and
+        reverify_update_from_json().  No-op in the base class; subclasses
+        override this to apply additional passes (e.g. Phase 3).
+        """
+        return result
 
     def execute_review(self, commit: Commit, commit_output_dir: Optional[str] = None) -> ReviewResult:
         """
