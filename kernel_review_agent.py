@@ -1381,6 +1381,8 @@ Examples:
         successful = 0
         failed = 0
         skipped = 0
+        total_update_time = 0.0
+        completed_updates = 0
 
         for i, commit_sha in enumerate(commits, 1):
             try:
@@ -1400,9 +1402,24 @@ Examples:
 
             try:
                 if args.verbose:
-                    print(f"[{i}/{len(commits)}] Re-verify-update {commit.sha[:12]}...")
+                    eta_str = ""
+                    if completed_updates > 0:
+                        avg_time = total_update_time / completed_updates
+                        remaining = len(commits) - i + 1
+                        eta_seconds = avg_time * remaining
+                        eta_minutes = int(eta_seconds / 60)
+                        eta_secs = int(eta_seconds % 60)
+                        if eta_minutes > 0:
+                            eta_str = f" (ETA: {eta_minutes}m {eta_secs}s)"
+                        else:
+                            eta_str = f" (ETA: {eta_secs}s)"
+                    print(f"[{i}/{len(commits)}] Re-verify-update {commit.sha[:12]}...{eta_str}")
 
+                start_time = time.time()
                 result, pruned = workflow.reverify_update_from_json(inline_json_path)
+                elapsed_time = time.time() - start_time
+                total_update_time += elapsed_time
+                completed_updates += 1
 
                 # Load existing inline data to preserve all metadata except findings/summary
                 with open(inline_json_path, 'r') as f:
