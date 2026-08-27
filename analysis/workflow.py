@@ -220,6 +220,142 @@ class ReviewWorkflow:
             code_context_formatted=context.get('code_context_formatted')
         )
 
+    def reverify_update_from_json(self, inline_json_path: str) -> tuple:
+        """
+        Re-verify findings from an existing review-inline.json, pruning false
+        positives and returning both the surviving findings and the pruned ones.
+
+        Reads review-pre-verification.json from the same directory to obtain
+        the diff and code context required by the verifier.  Raises
+        FileNotFoundError if either file is absent.
+
+        Returns:
+            (ReviewResult, List[Dict]) — result with surviving findings, and a
+            list of discarded findings each annotated with a 'pruned_reason'
+            key ('hallucination-pre-pass' or 'adversarial-verification').
+        """
+        import json
+        import os
+
+        if not os.path.exists(inline_json_path):
+            raise FileNotFoundError(f"Inline review file not found: {inline_json_path}")
+
+        commit_dir = os.path.dirname(inline_json_path)
+        pre_verify_path = os.path.join(commit_dir, 'review-pre-verification.json')
+        if not os.path.exists(pre_verify_path):
+            raise FileNotFoundError(
+                f"review-pre-verification.json not found in {commit_dir}; "
+                "it is required to supply the diff and code context for verification"
+            )
+
+        # Reset token usage counters
+        self.llm.reset_token_usage()
+
+        with open(inline_json_path, 'r') as f:
+            inline_data = json.load(f)
+        with open(pre_verify_path, 'r') as f:
+            pre_data = json.load(f)
+
+        sha = inline_data.get('commit') or pre_data.get('sha', '')
+        subject = inline_data.get('subject', pre_data.get('subject', ''))
+
+        if self.verbose:
+            print(f"\nRe-verify-update from {inline_json_path}...")
+            print(f"SHA: {sha[:12]}")
+            print(f"Subject: {subject}")
+            findings_before = len(inline_data.get('findings', []))
+            print(f"Findings to re-verify: {findings_before}\n")
+
+        from git_integration import Commit
+        commit = Commit(
+            sha=sha,
+            author=inline_data.get('author', pre_data.get('author', 'Unknown')),
+            date=pre_data.get('date', 'Unknown'),
+            subject=subject,
+            message=pre_data.get('message', subject),
+            diff=pre_data['diff'],
+            files=pre_data.get('files', []),
+            upstream_commit=inline_data.get('upstream-commit') or pre_data.get('upstream_commit'),
+            distro_commit=inline_data.get('distro-commit') or pre_data.get('upstream_verification', {}).get('distro_commit_sha')
+        )
+
+        context = {
+            'files': pre_data.get('files', []),
+            'code_context_formatted': pre_data.get('code_context', '')
+        }
+
+        # Reconstruct upstream_verification from inline_data for summary generation
+        upstream_verification = None
+        uv_block = inline_data.get('upstream-verification')
+        if uv_block:
+            from types import SimpleNamespace
+            upstream_verification = {
+                'upstream_commit': SimpleNamespace(
+                    sha=uv_block.get('upstream-commit', ''),
+                    subject=uv_block.get('upstream-subject', '')
+                ),
+                'findings_in_upstream': [None] * uv_block.get('findings-in-upstream', 0),
+                'findings_only_downstream': [None] * uv_block.get('findings-downstream-only', 0),
+            }
+
+        # Reconstruct backport_comparison from inline_data for metadata generation
+        backport_comparison = None
+        bp_block = inline_data.get('backport')
+        if bp_block:
+            bp_data = pre_data.get('backport_comparison')
+            if bp_data:
+                from analysis.backport_verifier import BackportComparison
+                backport_comparison = BackportComparison(
+                    has_upstream=bp_data.get('has_upstream', False),
+                    upstream_commit=bp_data.get('upstream_commit'),
+                    differences_found=bp_data.get('differences_found', False),
+                    needs_deep_review=bp_data.get('needs_deep_review', False),
+                    file_path_changes=[tuple(x) for x in bp_data.get('file_path_changes', [])],
+                    line_number_shifts=bp_data.get('line_number_shifts', []),
+                    context_mismatches=bp_data.get('context_mismatches', []),
+                    missing_hunks=bp_data.get('missing_hunks', []),
+                    extra_hunks=bp_data.get('extra_hunks', []),
+                    function_name_mismatches=bp_data.get('function_name_mismatches', []),
+                    summary=bp_data.get('summary', ''),
+                )
+
+        findings = inline_data.get('findings', [])
+
+        if self.verbose:
+            print(f"[1/1] Re-verifying {len(findings)} findings...")
+
+        pruned: List[Dict] = []
+        if self.skip_verification:
+            if self.verbose:
+                print("      Verification skipped (--skip-verification enabled)")
+            verified = findings
+        else:
+            verified = self._verify_findings(findings, context, commit, pruned_out=pruned)
+            if self.verbose:
+                print(f"      {len(verified)} issues after re-verification")
+                if pruned:
+                    print(f"      Pruned {len(pruned)} as false positives")
+
+        summary = self._generate_summary(commit, verified, upstream_verification)
+        token_usage = self.llm.get_token_usage()
+
+        if self.verbose:
+            print(f"\nRe-verify-update complete: {len(verified)} issue(s) confirmed\n")
+
+        result = ReviewResult(
+            findings=verified,
+            summary=summary,
+            subsystems_loaded=[],
+            upstream_verification=upstream_verification,
+            backport_comparison=backport_comparison,
+            input_tokens=token_usage['prompt_tokens'],
+            output_tokens=token_usage['completion_tokens'],
+            pre_verification_findings=findings,
+            categories=[],
+            code_context_formatted=context.get('code_context_formatted')
+        )
+        return result, pruned
+
     def execute_review(self, commit: Commit, commit_output_dir: Optional[str] = None) -> ReviewResult:
         """
         Execute full 5-task review protocol.
@@ -963,7 +1099,8 @@ JSON array:"""
         findings: List[Dict],
         context: Dict,
         commit: Commit,
-        commit_output_dir: Optional[str] = None
+        commit_output_dir: Optional[str] = None,
+        pruned_out: Optional[List] = None
     ) -> List[Dict]:
         """
         Task 3: Verify findings using false-positive guide and adversarial persona.
@@ -976,6 +1113,10 @@ JSON array:"""
             context: Code context
             commit: Commit being reviewed
             commit_output_dir: Output directory for this commit (for prompt dumping)
+            pruned_out: Optional list to collect discarded findings with a
+                'pruned_reason' key ('hallucination-pre-pass' or
+                'adversarial-verification').  Callers that do not need to
+                track pruned findings may omit this argument.
 
         Returns:
             List of verified findings
@@ -989,8 +1130,11 @@ JSON array:"""
         for finding in findings:
             if self._verify_evidence_physical_existence(finding, context, commit):
                 real_findings.append(finding)
-            elif self.verbose or self.debug:
-                print(f"      [PRE-PASS] Discarding hallucinated finding: {finding.get('type')}")
+            else:
+                if self.verbose or self.debug:
+                    print(f"      [PRE-PASS] Discarding hallucinated finding: {finding.get('type')}")
+                if pruned_out is not None:
+                    pruned_out.append({**finding, 'pruned_reason': 'hallucination-pre-pass'})
 
         if not real_findings:
             return []
@@ -1098,8 +1242,11 @@ JSON array (empty [] if false positive):"""
                     result = json.loads(json_str)
                     if isinstance(result, list) and len(result) > 0:
                         verified.append(result[0])
-                    elif self.verbose or self.debug:
-                        print(f"      [VERIFY] Finding discarded as false positive: {finding.get('type')}")
+                    else:
+                        if self.verbose or self.debug:
+                            print(f"      [VERIFY] Finding discarded as false positive: {finding.get('type')}")
+                        if pruned_out is not None:
+                            pruned_out.append({**finding, 'pruned_reason': 'adversarial-verification'})
                 else:
                     # If parsing fails for one finding, we err on the side of caution with small models
                     if self.debug:
@@ -1107,7 +1254,7 @@ JSON array (empty [] if false positive):"""
             except Exception as e:
                 if self.debug:
                     print(f"Error verifying finding {i+1}: {e}")
-                # On error, we keep it to be safe? Or discard? 
+                # On error, we keep it to be safe? Or discard?
                 # The directive was to reduce false positives, so maybe discard if we can't verify.
                 # But for now, let's keep it to avoid missing real bugs due to transient errors.
                 verified.append(finding)

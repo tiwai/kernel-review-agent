@@ -7,6 +7,7 @@ Focuses on code changes only, ignoring commit message quality and tags.
 """
 
 import argparse
+import json
 import sys
 import os
 import time
@@ -688,6 +689,16 @@ Examples:
     )
 
     parser.add_argument(
+        "--reverify-update",
+        action="store_true",
+        help="Re-verify and prune findings for the given commits from their existing "
+             "review-inline.json output files.  Updates review-inline.*, "
+             "review-metadata.json in-place (preserving all other metadata) and saves "
+             "removed findings to review-pruned.json.  Requires commits to be specified "
+             "and an output directory containing prior review results."
+    )
+
+    parser.add_argument(
         "--stop-after",
         choices=["categorize", "analyze", "verify"],
         help="Stop workflow after the specified stage (for dataset generation). "
@@ -1259,7 +1270,6 @@ Examples:
                 elapsed_time = time.time() - start_time
 
                 # Reconstruct commit for output formatting
-                import json
                 with open(json_file, 'r') as f:
                     pre_data = json.load(f)
 
@@ -1351,6 +1361,156 @@ Examples:
             print("=" * 70)
 
         return 0 if successful > 0 else 1
+
+    # Re-verify-update mode: re-verify and prune findings from existing review-inline.json files
+    if args.reverify_update:
+        # Expand commits (same as normal commit processing)
+        commits = []
+        for commit_arg in args.commit:
+            try:
+                expanded = git.expand_range(commit_arg)
+                commits.extend(expanded)
+            except Exception as e:
+                print(f"Error: Invalid commit or range: {commit_arg}", file=sys.stderr)
+                print(f"Details: {e}", file=sys.stderr)
+                return 1
+
+        if args.verbose:
+            print(f"Re-verify-update mode: processing {len(commits)} commit(s)...\n")
+
+        successful = 0
+        failed = 0
+        skipped = 0
+
+        for i, commit_sha in enumerate(commits, 1):
+            try:
+                commit = git.get_commit(commit_sha)
+            except Exception as e:
+                print(f"✗ Could not resolve commit {commit_sha}: {e}", file=sys.stderr)
+                failed += 1
+                continue
+
+            commit_dir = os.path.join(args.output_dir, commit.sha[:2], commit.sha)
+            inline_json_path = os.path.join(commit_dir, 'review-inline.json')
+
+            if not os.path.exists(inline_json_path):
+                print(f"✗ {commit.sha[:12]}: review-inline.json not found in {commit_dir} — skipping")
+                skipped += 1
+                continue
+
+            try:
+                if args.verbose:
+                    print(f"[{i}/{len(commits)}] Re-verify-update {commit.sha[:12]}...")
+
+                result, pruned = workflow.reverify_update_from_json(inline_json_path)
+
+                # Load existing inline data to preserve all metadata except findings/summary
+                with open(inline_json_path, 'r') as f:
+                    inline_data = json.load(f)
+
+                original_count = len(inline_data.get('findings', []))
+                surviving_count = len(result.findings)
+                pruned_count = len(pruned)
+
+                # Patch review-inline.json in-place (findings + summary only)
+                updated_inline = dict(inline_data)
+                updated_inline['findings'] = [json_formatter._format_finding(f) for f in result.findings]
+                updated_inline['summary'] = result.summary
+                metadata_gen.save_json(updated_inline, inline_json_path)
+
+                # Regenerate review-inline.txt with original timing/token metadata preserved
+                pre_verify_path = os.path.join(commit_dir, 'review-pre-verification.json')
+                with open(pre_verify_path, 'r') as f:
+                    pre_data = json.load(f)
+
+                from git_integration import Commit as CommitObj
+                full_commit = CommitObj(
+                    sha=commit.sha,
+                    author=inline_data.get('author', commit.author),
+                    date=pre_data.get('date', ''),
+                    subject=inline_data.get('subject', commit.subject),
+                    message=pre_data.get('message', commit.subject),
+                    diff=pre_data['diff'],
+                    files=pre_data.get('files', []),
+                    upstream_commit=inline_data.get('upstream-commit') or pre_data.get('upstream_commit'),
+                    distro_commit=inline_data.get('distro-commit') or pre_data.get('upstream_verification', {}).get('distro_commit_sha')
+                )
+
+                orig_elapsed = inline_data.get('review-time-seconds')
+                orig_model = inline_data.get('model', args.model)
+                orig_input_tokens = inline_data.get('input-tokens')
+                orig_output_tokens = inline_data.get('output-tokens')
+
+                report_text = formatter.format_report(
+                    full_commit,
+                    result.findings,
+                    summary=result.summary,
+                    upstream_verification=result.upstream_verification,
+                    backport_comparison=result.backport_comparison,
+                    elapsed_time=orig_elapsed,
+                    model_name=orig_model,
+                    input_tokens=orig_input_tokens,
+                    output_tokens=orig_output_tokens
+                )
+                txt_path = os.path.join(commit_dir, 'review-inline.txt')
+                with open(txt_path, 'w') as f:
+                    f.write(report_text)
+
+                # Regenerate review-metadata.json (findings count/severity change;
+                # timing and token metadata are preserved from original run)
+                metadata = metadata_gen.generate(
+                    full_commit,
+                    result.findings,
+                    elapsed_time=orig_elapsed,
+                    model_name=orig_model,
+                    input_tokens=orig_input_tokens,
+                    output_tokens=orig_output_tokens,
+                    backport_comparison=result.backport_comparison
+                )
+                metadata_path = os.path.join(commit_dir, 'review-metadata.json')
+                metadata_gen.save_json(metadata, metadata_path)
+
+                # Write review-pruned.json
+                pruned_data = {
+                    'commit': commit.sha,
+                    'subject': inline_data.get('subject', commit.subject),
+                    'original-count': original_count,
+                    'pruned-count': pruned_count,
+                    'surviving-count': surviving_count,
+                    'pruned-findings': pruned
+                }
+                pruned_path = os.path.join(commit_dir, 'review-pruned.json')
+                metadata_gen.save_json(pruned_data, pruned_path)
+
+                sha_short = commit.sha[:12]
+                print(f"✓ {sha_short}: {commit.subject}")
+                print(f"  Findings: {original_count} → {surviving_count} ({pruned_count} pruned)")
+                print(f"  Severity: {metadata['issue-severity-score']}")
+                if pruned_count > 0:
+                    print(f"  Pruned findings saved: {pruned_path}")
+                print()
+
+                successful += 1
+
+            except Exception as e:
+                print(f"✗ Error updating {commit.sha[:12]}: {e}", file=sys.stderr)
+                if args.debug:
+                    import traceback
+                    traceback.print_exc()
+                failed += 1
+                continue
+
+        if len(commits) > 1:
+            print("=" * 70)
+            print(f"Re-verify-update Summary: {len(commits)} total commits")
+            print(f"  ✓ {successful} successful")
+            if skipped > 0:
+                print(f"  - {skipped} skipped (no existing review-inline.json)")
+            if failed > 0:
+                print(f"  ✗ {failed} failed")
+            print("=" * 70)
+
+        return 0 if successful > 0 or skipped > 0 else 1
 
     # Process arguments: either patch files or commit references
     if args.patch:
