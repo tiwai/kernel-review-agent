@@ -578,6 +578,14 @@ Examples:
     )
 
     parser.add_argument(
+        "--verifier-model",
+        default=None,
+        help="Model to use as the verifier in --reverify/--reverify-update mode. "
+             "When set, --model identifies whose results are being re-verified while "
+             "--verifier-model is used for the verification step itself."
+    )
+
+    parser.add_argument(
         "--provider",
         choices=["openai", "anthropic", "anthropic-vertex", "google", "ollama"],
         help="LLM provider (default: auto-detect from other options)"
@@ -940,6 +948,12 @@ Examples:
     if args.debug:
         print(f"  Provider: {provider}")
 
+    # Determine effective verifier model (--verifier-model overrides --model for LLM calls
+    # in reverify modes; --model still identifies whose results are being re-verified)
+    verifier_model = args.verifier_model if args.verifier_model else args.model
+    if args.verifier_model and args.debug:
+        print(f"  Verifier model: {verifier_model} (reviewing results of: {args.model})")
+
     # Determine host reset configuration (used for both initial and tool-enabled clients)
     enable_reset = (args.enable_host_reset if hasattr(args, 'enable_host_reset')
                     else config.ENABLE_HOST_RESET)
@@ -964,7 +978,7 @@ Examples:
     try:
         # Prepare provider-specific kwargs
         provider_kwargs = {
-            'model': args.model,
+            'model': verifier_model,
             'verbose': args.verbose,
             'debug': args.debug,
             'dump_prompts': args.save_prompts,
@@ -1042,7 +1056,7 @@ Examples:
         prompts = PromptLoader(
             prompts_dir=args.prompts_dir,
             prompt_set=args.prompt_set,
-            model_name=args.model,
+            model_name=verifier_model,
             config_overrides=config_overrides,
             upstream_review=args.upstream_review
         )
@@ -1166,7 +1180,7 @@ Examples:
                 host=args.host,
                 port=args.port,
                 api_key=args.api_key,
-                model=args.model,
+                model=verifier_model,
                 verbose=args.verbose,
                 debug=args.debug,
                 dump_prompts=args.save_prompts,
@@ -1297,7 +1311,7 @@ Examples:
                     upstream_verification=result.upstream_verification,
                     backport_comparison=result.backport_comparison,
                     elapsed_time=elapsed_time,
-                    model_name=args.model,
+                    model_name=verifier_model,
                     input_tokens=result.input_tokens,
                     output_tokens=result.output_tokens
                 )
@@ -1308,14 +1322,14 @@ Examples:
                     upstream_verification=result.upstream_verification,
                     backport_comparison=result.backport_comparison,
                     elapsed_time=elapsed_time,
-                    model_name=args.model,
+                    model_name=verifier_model,
                     input_tokens=result.input_tokens,
                     output_tokens=result.output_tokens
                 )
                 metadata = metadata_gen.generate(
                     commit, result.findings,
                     elapsed_time=elapsed_time,
-                    model_name=args.model,
+                    model_name=verifier_model,
                     input_tokens=result.input_tokens,
                     output_tokens=result.output_tokens,
                     backport_comparison=result.backport_comparison
