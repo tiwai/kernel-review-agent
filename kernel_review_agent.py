@@ -61,8 +61,10 @@ def setup_module_path():
         # Already in the right place, no need to modify path
         return
 
-    # Check system-wide installation paths
+    # Check installation paths: $PREFIX/share relative to $PREFIX/bin first,
+    # then the well-known system-wide locations
     possible_paths = [
+        os.path.join(os.path.dirname(script_dir), 'share', 'kernel-review-agent'),
         '/usr/share/kernel-review-agent',
         '/usr/local/share/kernel-review-agent',
         os.path.expanduser('~/.local/share/kernel-review-agent'),

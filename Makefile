@@ -6,6 +6,9 @@ DATADIR = $(PREFIX)/share/kernel-review-agent
 DOCDIR = $(PREFIX)/share/doc/kernel-review-agent
 PYTHON ?= python3
 
+# Prompt sets: each subdirectory of prompts/ (e.g. default, small)
+PROMPT_SETS = $(notdir $(patsubst %/,%,$(wildcard prompts/*/)))
+
 # Installation directories
 INSTALL = install
 INSTALL_PROGRAM = $(INSTALL) -m 755
@@ -54,18 +57,22 @@ install-data:
 # Install prompts
 install-prompts:
 	$(INSTALL_DIR) $(DESTDIR)$(DATADIR)/prompts
-	$(INSTALL_DATA) prompts/*.md $(DESTDIR)$(DATADIR)/prompts/
-	$(INSTALL_DIR) $(DESTDIR)$(DATADIR)/prompts/subsystem
-	$(INSTALL_DATA) prompts/subsystem/*.md $(DESTDIR)$(DATADIR)/prompts/subsystem/
+	$(INSTALL_DATA) prompts/prompt-sets.json prompts/*.md $(DESTDIR)$(DATADIR)/prompts/
+	# Install each prompt set (prompts/<set>/ and prompts/<set>/subsystem/)
+	for set in $(PROMPT_SETS); do \
+		$(INSTALL_DIR) $(DESTDIR)$(DATADIR)/prompts/$$set/subsystem && \
+		$(INSTALL_DATA) prompts/$$set/*.md $(DESTDIR)$(DATADIR)/prompts/$$set/ && \
+		$(INSTALL_DATA) prompts/$$set/subsystem/*.md $(DESTDIR)$(DATADIR)/prompts/$$set/subsystem/ || exit 1; \
+	done
 
 # Install documentation
 install-docs:
 	$(INSTALL_DIR) $(DESTDIR)$(DOCDIR)
 	$(INSTALL_DATA) README.md $(DESTDIR)$(DOCDIR)/
 	$(INSTALL_DATA) QUICKSTART.md $(DESTDIR)$(DOCDIR)/
-	$(INSTALL_DATA) DEBUG_GUIDE.md $(DESTDIR)$(DOCDIR)/
-	$(INSTALL_DATA) LLM_PROVIDERS.md $(DESTDIR)$(DOCDIR)/
-	$(INSTALL_DATA) CONFIGURATION.md $(DESTDIR)$(DOCDIR)/
+	$(INSTALL_DATA) docs/dev/DEBUG_GUIDE.md $(DESTDIR)$(DOCDIR)/
+	$(INSTALL_DATA) docs/dev/LLM_PROVIDERS.md $(DESTDIR)$(DOCDIR)/
+	$(INSTALL_DATA) docs/dev/CONFIGURATION.md $(DESTDIR)$(DOCDIR)/
 	$(INSTALL_DATA) LICENSE $(DESTDIR)$(DOCDIR)/
 	$(INSTALL_DATA) LICENSE-PROMPTS $(DESTDIR)$(DOCDIR)/
 	$(INSTALL_DATA) config.json.example $(DESTDIR)$(DOCDIR)/
