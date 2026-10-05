@@ -222,10 +222,11 @@ class ReviewWorkflow:
         result = self._post_verify_hook(commit, result)
         return result
 
-    def reverify_update_from_json(self, inline_json_path: str) -> tuple:
+    def reverify_update_from_inline(self, inline_path: str) -> tuple:
         """
-        Re-verify findings from an existing review-inline.json, pruning false
-        positives and returning both the surviving findings and the pruned ones.
+        Re-verify findings from an existing review-inline.json (or, for older
+        reviews, review-inline.txt), pruning false positives and returning
+        both the surviving findings and the pruned ones.
 
         Reads review-pre-verification.json from the same directory to obtain
         the diff and code context required by the verifier.  Raises
@@ -238,11 +239,12 @@ class ReviewWorkflow:
         """
         import json
         import os
+        from output.inline_parser import load_inline_review
 
-        if not os.path.exists(inline_json_path):
-            raise FileNotFoundError(f"Inline review file not found: {inline_json_path}")
+        if not os.path.exists(inline_path):
+            raise FileNotFoundError(f"Inline review file not found: {inline_path}")
 
-        commit_dir = os.path.dirname(inline_json_path)
+        commit_dir = os.path.dirname(inline_path)
         pre_verify_path = os.path.join(commit_dir, 'review-pre-verification.json')
         if not os.path.exists(pre_verify_path):
             raise FileNotFoundError(
@@ -253,16 +255,15 @@ class ReviewWorkflow:
         # Reset token usage counters
         self.llm.reset_token_usage()
 
-        with open(inline_json_path, 'r') as f:
-            inline_data = json.load(f)
         with open(pre_verify_path, 'r') as f:
             pre_data = json.load(f)
+        inline_data = load_inline_review(inline_path, pre_data)
 
         sha = inline_data.get('commit') or pre_data.get('sha', '')
         subject = inline_data.get('subject', pre_data.get('subject', ''))
 
         if self.verbose:
-            print(f"\nRe-verify-update from {inline_json_path}...")
+            print(f"\nRe-verify-update from {inline_path}...")
             print(f"SHA: {sha[:12]}")
             print(f"Subject: {subject}")
             findings_before = len(inline_data.get('findings', []))
@@ -375,7 +376,7 @@ class ReviewWorkflow:
     def _post_verify_hook(self, commit: Commit, result: 'ReviewResult') -> 'ReviewResult':
         """
         Hook called after verification in reverify_from_json() and
-        reverify_update_from_json().  No-op in the base class; subclasses
+        reverify_update_from_inline().  No-op in the base class; subclasses
         override this to apply additional passes (e.g. Phase 3).
         """
         return result

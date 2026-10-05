@@ -700,7 +700,8 @@ Examples:
         "--reverify-update",
         action="store_true",
         help="Re-verify and prune findings for the given commits from their existing "
-             "review-inline.json output files.  Updates review-inline.*, "
+             "review-inline.json output files (or review-inline.txt for older "
+             "reviews lacking the JSON file).  Updates review-inline.*, "
              "review-metadata.json in-place (preserving all other metadata) and saves "
              "removed findings to review-pruned.json.  Requires commits to be specified "
              "and an output directory containing prior review results."
@@ -1408,9 +1409,16 @@ Examples:
 
             commit_dir = os.path.join(args.output_dir, commit.sha[:2], commit.sha)
             inline_json_path = os.path.join(commit_dir, 'review-inline.json')
+            txt_path = os.path.join(commit_dir, 'review-inline.txt')
 
-            if not os.path.exists(inline_json_path):
-                print(f"✗ {commit.sha[:12]}: review-inline.json not found in {commit_dir} — skipping")
+            # Older reviews only have review-inline.txt; fall back to parsing it
+            if os.path.exists(inline_json_path):
+                inline_path = inline_json_path
+            elif os.path.exists(txt_path):
+                inline_path = txt_path
+            else:
+                print(f"✗ {commit.sha[:12]}: neither review-inline.json nor review-inline.txt "
+                      f"found in {commit_dir} — skipping")
                 skipped += 1
                 continue
 
@@ -1430,29 +1438,31 @@ Examples:
                     print(f"[{i}/{len(commits)}] Re-verify-update {commit.sha[:12]}...{eta_str}")
 
                 start_time = time.time()
-                result, pruned = workflow.reverify_update_from_json(inline_json_path)
+                result, pruned = workflow.reverify_update_from_inline(inline_path)
                 elapsed_time = time.time() - start_time
                 total_update_time += elapsed_time
                 completed_updates += 1
 
                 # Load existing inline data to preserve all metadata except findings/summary
-                with open(inline_json_path, 'r') as f:
-                    inline_data = json.load(f)
+                from output.inline_parser import load_inline_review
+                pre_verify_path = os.path.join(commit_dir, 'review-pre-verification.json')
+                with open(pre_verify_path, 'r') as f:
+                    pre_data = json.load(f)
+                inline_data = load_inline_review(inline_path, pre_data)
 
                 original_count = len(inline_data.get('findings', []))
                 surviving_count = len(result.findings)
                 pruned_count = len(pruned)
 
-                # Patch review-inline.json in-place (findings + summary only)
-                updated_inline = dict(inline_data)
-                updated_inline['findings'] = [json_formatter._format_finding(f) for f in result.findings]
-                updated_inline['summary'] = result.summary
-                metadata_gen.save_json(updated_inline, inline_json_path)
+                # Patch review-inline.json in-place (findings + summary only);
+                # txt-only reviews get just review-inline.txt rewritten below
+                if inline_path == inline_json_path:
+                    updated_inline = dict(inline_data)
+                    updated_inline['findings'] = [json_formatter._format_finding(f) for f in result.findings]
+                    updated_inline['summary'] = result.summary
+                    metadata_gen.save_json(updated_inline, inline_json_path)
 
                 # Regenerate review-inline.txt with original timing/token metadata preserved
-                pre_verify_path = os.path.join(commit_dir, 'review-pre-verification.json')
-                with open(pre_verify_path, 'r') as f:
-                    pre_data = json.load(f)
 
                 from git_integration import Commit as CommitObj
                 full_commit = CommitObj(
@@ -1483,7 +1493,6 @@ Examples:
                     input_tokens=orig_input_tokens,
                     output_tokens=orig_output_tokens
                 )
-                txt_path = os.path.join(commit_dir, 'review-inline.txt')
                 with open(txt_path, 'w') as f:
                     f.write(report_text)
 
@@ -1536,7 +1545,7 @@ Examples:
             print(f"Re-verify-update Summary: {len(commits)} total commits")
             print(f"  ✓ {successful} successful")
             if skipped > 0:
-                print(f"  - {skipped} skipped (no existing review-inline.json)")
+                print(f"  - {skipped} skipped (no existing review-inline.json/txt)")
             if failed > 0:
                 print(f"  ✗ {failed} failed")
             print("=" * 70)
