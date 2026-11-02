@@ -8,7 +8,7 @@ from openai import OpenAI
 from openai import APITimeoutError, APIConnectionError
 
 import config
-from .base_client import LLMClient
+from .base_client import LLMClient, make_base_url
 
 
 class OpenAIClient(LLMClient):
@@ -43,7 +43,7 @@ class OpenAIClient(LLMClient):
         """
         super().__init__(model, verbose, debug, dump_prompts, dump_dir)
 
-        self.base_url = f"http://{host}:{port}/v1"
+        self.base_url = make_base_url(host, port)
         self.api_key = api_key
         self.reasoning_effort = reasoning_effort
 

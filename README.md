@@ -192,6 +192,9 @@ python kernel_review_agent.py HEAD --host localhost --port 8080
 
 # Explicit provider selection
 python kernel_review_agent.py HEAD --provider openai --host localhost --port 8080 --model gpt-4
+
+# Server behind HTTPS: prefix the host with the scheme
+python kernel_review_agent.py HEAD --host https://llm.example.com --port 443 --api-key "$KEY" --model gpt-4
 ```
 
 #### Ollama
@@ -893,7 +896,7 @@ EOF
 All options are optional. See `config.json.example` for a complete template.
 
 **LLM Settings:**
-- `DEFAULT_HOST`: LLM server hostname (default: `"localhost"`)
+- `DEFAULT_HOST`: LLM server hostname, optionally with a scheme like `"https://llm.example.com"` (default: `"localhost"`)
 - `DEFAULT_PORT`: LLM server port (default: `8080`)
 - `DEFAULT_MODEL`: Model name (default: `"gpt-4"`)
 - `DEFAULT_API_KEY`: API key (default: `"dummy"`)
