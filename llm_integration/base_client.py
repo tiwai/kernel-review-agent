@@ -5,6 +5,11 @@ from typing import List, Dict, Optional
 import config
 
 
+def make_base_url(host: str, port: int) -> str:
+    """Build the API base URL, scheme://host:port/v1"""
+    scheme, _, host = host.rstrip('/').rpartition('://')
+    return f"{scheme or 'http'}://{host}:{port}/v1"
+
 class LLMClient(ABC):
     """Abstract base class for LLM API clients."""
 

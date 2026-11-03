@@ -557,7 +557,8 @@ Examples:
     parser.add_argument(
         "--host",
         default=config.DEFAULT_HOST,
-        help=f"OpenAI API host (default: {config.DEFAULT_HOST})"
+        help=f"OpenAI API host, optionally with a scheme such as https://llm.example.com "
+             f"(default: {config.DEFAULT_HOST})"
     )
 
     parser.add_argument(

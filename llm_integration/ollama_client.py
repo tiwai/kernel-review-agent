@@ -13,7 +13,7 @@ except ImportError:
     OPENAI_AVAILABLE = False
 
 import config
-from .base_client import LLMClient
+from .base_client import LLMClient, make_base_url
 
 
 class OllamaClient(LLMClient):
@@ -51,7 +51,7 @@ class OllamaClient(LLMClient):
 
         self.host = host
         self.port = port
-        self.base_url = f"http://{host}:{port}/v1"
+        self.base_url = make_base_url(host, port)
 
         # Create dump directory if needed
         if self.dump_prompts and not os.path.exists(self.dump_dir):
