@@ -7,7 +7,7 @@ import sys
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 
-from git_integration import Commit
+from git_integration import Commit, git_ref_for_commit
 from llm_integration import OpenAIClient
 from prompt_management import PromptLoader, SubsystemMatcher
 from analysis.code_context import CodeContextLoader
@@ -1393,14 +1393,14 @@ JSON array (empty [] if false positive):"""
         if has_tools:
             system_prompt = (
                 "You are a Linux kernel patch developer. "
-                "You have access to git tools (git_show, git_grep) to read the actual source files. "
+                "You have access to git tools (get_function, git_show, git_grep) to read the actual source files. "
                 "Use them to verify the exact current state of the code before writing patches. "
                 "Output only the patch hunks — no prose, no explanation."
             )
             tool_instruction = (
                 f"\nBefore writing each patch:\n"
-                f"1. Use git_show with commit='{commit.sha}' and the relevant file path to read the "
-                f"current source around the issue location\n"
+                f"1. Use get_function (or git_show with start_line/end_line) to read the "
+                f"current source around the issue location, unless it is already shown above\n"
                 f"2. Verify the exact line numbers and surrounding context\n"
                 f"3. Then write the patch with correct line numbers\n"
             )
@@ -1449,7 +1449,8 @@ Patches:"""
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     max_iterations=self.max_tool_iterations,
-                    max_tokens=config.ANALYZE_MAX_TOKENS
+                    max_tokens=config.ANALYZE_MAX_TOKENS,
+                    commit_ref=git_ref_for_commit(commit.sha)
                 )
             else:
                 response = self.llm.analyze_code(

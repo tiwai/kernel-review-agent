@@ -3,7 +3,7 @@
 import subprocess
 import re
 from typing import List, Dict, Optional
-from git_integration import Commit
+from git_integration import Commit, git_ref_for_commit, extract_function
 
 
 class CodeContextLoader:
@@ -124,15 +124,7 @@ class CodeContextLoader:
         Returns:
             Git reference (commit SHA or "HEAD" for patches)
         """
-        # Git SHAs are hex strings (0-9, a-f). If commit.sha contains other chars
-        # (like dots, slashes, or non-hex chars), it's likely a patch filename.
-        import re
-        if re.match(r'^[0-9a-fA-F]+$', self.commit.sha):
-            # Valid hex SHA
-            return self.commit.sha
-        else:
-            # Patch mode - use HEAD
-            return "HEAD"
+        return git_ref_for_commit(self.commit.sha)
 
     def _extract_changed_functions_from_diff(self) -> List[Dict]:
         """
@@ -270,31 +262,9 @@ class CodeContextLoader:
             )
             file_content = result.stdout
 
-            # Extract function definition
-            # Simple heuristic: find function signature and grab until matching brace
-            lines = file_content.split('\n')
-            func_def = []
-            in_function = False
-            brace_count = 0
-
-            for i, line in enumerate(lines):
-                # Look for function definition
-                if not in_function:
-                    # Match: return_type function_name(
-                    if re.search(rf'\b{re.escape(func_name)}\s*\(', line):
-                        in_function = True
-                        func_def.append(line)
-                        brace_count += line.count('{') - line.count('}')
-                else:
-                    func_def.append(line)
-                    brace_count += line.count('{') - line.count('}')
-
-                    # Function complete when braces balance
-                    if brace_count == 0 and '{' in ''.join(func_def):
-                        break
-
-            if func_def:
-                return '\n'.join(func_def)
+            found = extract_function(file_content, func_name)
+            if found:
+                return found[1]
 
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             if self.debug:

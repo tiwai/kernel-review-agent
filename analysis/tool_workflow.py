@@ -5,7 +5,7 @@ import json
 from typing import List, Dict
 from dataclasses import dataclass
 
-from git_integration import Commit
+from git_integration import Commit, git_ref_for_commit
 from llm_integration import ToolEnabledClient
 from prompt_management import PromptLoader, SubsystemMatcher
 import config
@@ -161,7 +161,7 @@ DIFF:
 
 Task: Verify callback `{callback}` signature matches the timer API being used.
 
-1. Use git_grep to find `{callback}` function definition
+1. Use get_function to read the `{callback}` function definition
 2. Check its signature (parameter type)
 3. Check which API is used (timer_setup or setup_timer)
 4. Report if there's a mismatch
@@ -173,6 +173,7 @@ Respond: BUG or OK"""
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     max_iterations=5,
+                    commit_ref=git_ref_for_commit(commit.sha),
                     max_tokens=2000
                 )
 
@@ -221,9 +222,8 @@ Common issues:
 DIFF:
 {commit.diff[:2000]}
 
-1. Use git_show to read {file_path} at HEAD
-2. Find function `{func_name}`
-3. Check for missing error checks or resource leaks
+1. Use get_function to read `{func_name}` in {file_path}
+2. Check for missing error checks or resource leaks
 
 Respond with JSON array: [{{"type":"...", "message":"...", "severity":"..."}}] or []"""
 
@@ -232,6 +232,7 @@ Respond with JSON array: [{{"type":"...", "message":"...", "severity":"..."}}] o
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     max_iterations=6,
+                    commit_ref=git_ref_for_commit(commit.sha),
                     max_tokens=3000
                 )
 
@@ -284,6 +285,7 @@ Respond with JSON array or [].
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 max_iterations=6,
+                commit_ref=git_ref_for_commit(commit.sha),
                 max_tokens=3000
             )
 

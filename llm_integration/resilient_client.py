@@ -142,7 +142,8 @@ class ResilientLLMClient(LLMClient):
         user_prompt: str,
         max_iterations: int = 10,
         max_tokens: int = config.DEFAULT_MAX_TOKENS,
-        temperature: Optional[float] = None
+        temperature: Optional[float] = None,
+        commit_ref: Optional[str] = None
     ) -> str:
         """
         Analyze with tool calling enabled (automatic reset on fatal errors).
@@ -153,6 +154,7 @@ class ResilientLLMClient(LLMClient):
             max_iterations: Maximum tool calling iterations
             max_tokens: Maximum tokens per response
             temperature: Sampling temperature (None = use model default)
+            commit_ref: Commit under review; tools read this tree by default
 
         Returns:
             Final LLM response after all tool calls
@@ -165,7 +167,8 @@ class ResilientLLMClient(LLMClient):
 
         return self._call_with_reset(
             lambda: self.client.analyze_with_tools(
-                system_prompt, user_prompt, max_iterations, max_tokens, temperature
+                system_prompt, user_prompt, max_iterations, max_tokens, temperature,
+                commit_ref=commit_ref
             )
         )
 

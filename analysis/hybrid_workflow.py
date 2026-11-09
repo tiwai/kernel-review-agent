@@ -6,7 +6,7 @@ from typing import List, Dict, Optional
 
 from .workflow import ReviewWorkflow, ReviewResult
 from .backport_verifier import BackportVerifier, BackportComparison
-from git_integration import Commit
+from git_integration import Commit, git_ref_for_commit
 from llm_integration import ToolEnabledClient
 import config
 
@@ -148,7 +148,9 @@ class HybridReviewWorkflow(ReviewWorkflow):
                 print(f"\n=== Phase 3: Free-form Skeptic Pass ({len(verified_findings)} findings) ===")
 
             pre_phase3_count = len(verified_findings)
-            verified_findings = self._free_form_skeptic_pass(commit, verified_findings)
+            verified_findings = self._free_form_skeptic_pass(
+                commit, verified_findings, result.code_context_formatted
+            )
             result.findings = verified_findings
 
             if len(verified_findings) != pre_phase3_count:
@@ -174,7 +176,9 @@ class HybridReviewWorkflow(ReviewWorkflow):
             print(f"\n=== Phase 3: Free-form Skeptic Pass ({len(result.findings)} findings) ===")
 
         pre_phase3_count = len(result.findings)
-        result.findings = self._free_form_skeptic_pass(commit, result.findings)
+        result.findings = self._free_form_skeptic_pass(
+            commit, result.findings, getattr(result, 'code_context_formatted', None)
+        )
 
         if len(result.findings) != pre_phase3_count:
             result.summary = self._generate_summary(
@@ -269,10 +273,10 @@ COMMIT DIFF:
 {commit.diff[:2000]}
 
 Task: Use git tools to verify if this is a real bug or a hallucination.
-1. Locate the file and function in the current source code using git_show.
-   Example: git_show(commit="{commit.sha}", path="path/to/file.c")
+1. Read the function(s) involved using get_function.
+   Example: get_function(name="function_name", path="path/to/file.c")
 2. Verify the existence of the variables and logic mentioned in the evidence.
-   Example: git_grep(pattern="function_name", file_pattern="*.c")
+   Example: git_grep(pattern="variable_name", file_pattern="path/to/file.c")
 3. Determine if the reported issue is logically possible.
 
 Answer: REAL_BUG or HALLUCINATION.
@@ -283,7 +287,8 @@ If REAL_BUG, provide a one-sentence justification based on the source code you r
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 max_iterations=self.max_tool_iterations,
-                max_tokens=2000
+                commit_ref=git_ref_for_commit(commit.sha),
+                max_tokens=config.VERIFY_MAX_TOKENS
             )
             
             response_lower = response.lower()
@@ -349,10 +354,9 @@ COMMIT DIFF:
 Task: Verify if callback function `{callback_name}` has the correct signature.
 
 Steps:
-1. Use git_grep to find the definition of `{callback_name}`
-   Example: git_grep(pattern="{callback_name}", file_pattern="*.c")
-2. Or use git_show to read the file containing the callback
-   Example: git_show(commit="{commit.sha}", path="path/to/file.c")
+1. Use get_function to read the definition of `{callback_name}`
+   Example: get_function(name="{callback_name}")
+2. If needed, use git_grep to locate where it is registered
 3. Check its parameter type
 4. Check which timer API is being used (look for timer_setup or setup_timer in the diff)
 5. Answer: Does the signature match the API? (YES = correct, NO = bug)
@@ -364,7 +368,8 @@ Be concise."""
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     max_iterations=self.max_tool_iterations,
-                    max_tokens=2000
+                    commit_ref=git_ref_for_commit(commit.sha),
+                    max_tokens=config.VERIFY_MAX_TOKENS
                 )
 
                 # Check if verification confirms a bug
@@ -472,8 +477,8 @@ COMMIT DIFF:
 
 Task: Verify if this is a real bug or false positive.
 
-1. Use git_show to read the COMPLETE function `{func_name}`
-   Example: git_show(commit="{commit.sha}", path="path/to/file.c")
+1. Use get_function to read the COMPLETE function `{func_name}`
+   Example: get_function(name="{func_name}")
 2. Find ALL lock operations:
    - Acquisitions: down_write, down_read, mutex_lock, spin_lock
    - Releases: up_write, up_read, mutex_unlock, spin_unlock
@@ -495,7 +500,8 @@ Be concise but include the lock trace."""
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     max_iterations=self.max_tool_iterations,
-                    max_tokens=3000
+                    commit_ref=git_ref_for_commit(commit.sha),
+                    max_tokens=config.VERIFY_MAX_TOKENS
                 )
 
                 # Check response
@@ -617,8 +623,8 @@ COMMIT DIFF:
 
 Task: Verify if this is a real UAF or false positive.
 
-1. Use git_show to read the file containing `{var_name}`
-   Example: git_show(commit="{commit.sha}", path="path/to/file.c")
+1. Use get_function to read the functions handling `{var_name}`, or git_grep
+   to locate it, e.g. git_grep(pattern="{ref_counter}", file_pattern="path/to/file.c")
 2. Find the initialization of reference counter `{ref_counter}`
    - What is the INITIAL value? (often 2, not 1!)
 3. Find ALL places that increment `{ref_counter}`
@@ -638,7 +644,8 @@ Be concise but show the trace."""
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     max_iterations=self.max_tool_iterations,
-                    max_tokens=3000
+                    commit_ref=git_ref_for_commit(commit.sha),
+                    max_tokens=config.VERIFY_MAX_TOKENS
                 )
 
                 response_lower = response.lower()
@@ -689,7 +696,12 @@ Be concise but show the trace."""
 
         return callbacks
 
-    def _free_form_skeptic_pass(self, commit: Commit, findings: List[Dict]) -> List[Dict]:
+    def _free_form_skeptic_pass(
+        self,
+        commit: Commit,
+        findings: List[Dict],
+        code_context: Optional[str] = None
+    ) -> List[Dict]:
         """
         Phase 3: Free-form expert skeptic re-verification.
 
@@ -726,16 +738,25 @@ Be concise but show the trace."""
                 evidence = '\n'.join(str(x) for x in evidence)
             findings_lines.append(
                 f"Finding {i} [{ftype}]: {msg}\n"
-                f"  Evidence: {evidence[:500]}"
+                f"  Evidence: {evidence[:1500]}"
             )
 
         commit_context = f"Commit: {commit.sha}\nSubject: {commit.subject}"
         if commit.message and commit.message.strip() and commit.message != commit.subject:
             commit_context += f"\nCommit message:\n{commit.message}"
 
+        code_context_section = ""
+        if code_context:
+            code_context_section = (
+                "FULL SOURCE CODE CONTEXT (changed functions before/after the commit; "
+                "already provided, do not fetch these again):\n"
+                f"{code_context}\n\n"
+            )
+
         user_prompt = (
             f"{commit_context}\n\n"
             f"Diff:\n{commit.diff}\n\n"
+            f"{code_context_section}"
             f"Reported findings to re-verify:\n\n"
             + "\n\n".join(findings_lines)
             + "\n\nInvestigate each finding using git tools as needed, then output:\n"
@@ -747,7 +768,8 @@ Be concise but show the trace."""
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 max_iterations=self.max_tool_iterations,
-                max_tokens=4096
+                commit_ref=git_ref_for_commit(commit.sha),
+                max_tokens=config.VERIFY_MAX_TOKENS
             )
 
             match = re.search(
