@@ -460,8 +460,7 @@ class ToolEnabledClient(OpenAIClient):
                 api_kwargs["tool_choice"] = tool_choice
         if temperature is not None:
             api_kwargs["temperature"] = temperature
-        if self.reasoning_effort is not None:
-            api_kwargs["reasoning_effort"] = self.reasoning_effort
+        self._apply_thinking(api_kwargs)
         return self.client.chat.completions.create(**api_kwargs)
 
     def analyze_with_tools(

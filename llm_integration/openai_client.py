@@ -25,6 +25,8 @@ class OpenAIClient(LLMClient):
         dump_prompts: bool = False,
         dump_dir: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
+        verify_reasoning_effort: Optional[str] = None,
+        verify_chat_template_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
         """
@@ -40,12 +42,19 @@ class OpenAIClient(LLMClient):
             dump_prompts: Save prompts and responses to commit output directories
             dump_dir: (Deprecated) Legacy dump directory
             reasoning_effort: Reasoning effort level for models that support it
+            verify_reasoning_effort: Reasoning effort override for the verification phase
+            verify_chat_template_kwargs: chat_template_kwargs override for the verification
+                phase, e.g. {"enable_thinking": False}
         """
         super().__init__(model, verbose, debug, dump_prompts, dump_dir)
 
         self.base_url = make_base_url(host, port)
         self.api_key = api_key
         self.reasoning_effort = reasoning_effort
+        if verify_reasoning_effort:
+            self.verify_overrides['reasoning_effort'] = verify_reasoning_effort
+        if verify_chat_template_kwargs:
+            self.verify_overrides['chat_template_kwargs'] = verify_chat_template_kwargs
 
         try:
             # For HTTP connections (local servers), disable SSL verification
@@ -117,6 +126,20 @@ class OpenAIClient(LLMClient):
         response_text, _ = self._call_with_retry(messages, max_tokens, temperature, stage_name, commit_output_dir)
         return response_text
 
+    @property
+    def effective_reasoning_effort(self) -> Optional[str]:
+        """Reasoning effort for the next request, honouring the active override."""
+        return self._active_overrides.get('reasoning_effort', self.reasoning_effort)
+
+    def _apply_thinking(self, api_kwargs: Dict[str, Any]) -> None:
+        """Add the thinking-level parameters to a chat completion request."""
+        effort = self.effective_reasoning_effort
+        if effort is not None:
+            api_kwargs["reasoning_effort"] = effort
+        template_kwargs = self._active_overrides.get('chat_template_kwargs')
+        if template_kwargs:
+            api_kwargs["extra_body"] = {"chat_template_kwargs": template_kwargs}
+
     def _call_with_retry(
         self,
         messages: List[Dict[str, str]],
@@ -170,8 +193,7 @@ class OpenAIClient(LLMClient):
                 }
                 if temperature is not None:
                     api_kwargs["temperature"] = temperature
-                if self.reasoning_effort is not None:
-                    api_kwargs["reasoning_effort"] = self.reasoning_effort
+                self._apply_thinking(api_kwargs)
 
                 response = self.client.chat.completions.create(**api_kwargs)
 
@@ -180,10 +202,11 @@ class OpenAIClient(LLMClient):
 
                 # Extract thinking/reasoning blocks if present
                 thinking_text = None
-                if hasattr(response.choices[0].message, 'extended_thinking'):
-                    thinking_text = response.choices[0].message.extended_thinking
-                elif hasattr(response.choices[0].message, 'reasoning'):
-                    thinking_text = response.choices[0].message.reasoning
+                msg = response.choices[0].message
+                for attr in ('extended_thinking', 'reasoning', 'reasoning_content'):
+                    if getattr(msg, attr, None):
+                        thinking_text = getattr(msg, attr)
+                        break
 
                 # Extract token usage if available
                 usage_dict = {
@@ -320,8 +343,10 @@ class OpenAIClient(LLMClient):
                 f.write(f"Max Tokens: {max_tokens}\n")
                 temp_str = f"{temperature}" if temperature is not None else "default"
                 f.write(f"Temperature: {temp_str}\n")
-                if self.reasoning_effort:
-                    f.write(f"Reasoning Effort: {self.reasoning_effort}\n")
+                if self.effective_reasoning_effort:
+                    f.write(f"Reasoning Effort: {self.effective_reasoning_effort}\n")
+                if self._active_overrides.get('chat_template_kwargs'):
+                    f.write(f"Chat Template Kwargs: {self._active_overrides['chat_template_kwargs']}\n")
                 if stage_name:
                     f.write(f"Stage: {stage_name}\n")
                 f.write(f"\n{'='*80}\n\n")
@@ -391,7 +416,8 @@ class OpenAIClient(LLMClient):
                     "model": self.model,
                     "max_tokens": usage_dict.get('total_tokens', 0) if usage_dict else 0,
                     "temperature": None,  # Would need to be passed from caller
-                    "reasoning_effort": self.reasoning_effort,
+                    "reasoning_effort": self.effective_reasoning_effort,
+                    "chat_template_kwargs": self._active_overrides.get('chat_template_kwargs'),
                     "input_tokens": usage_dict.get('prompt_tokens', 0) if usage_dict else 0,
                     "output_tokens": usage_dict.get('completion_tokens', 0) if usage_dict else 0,
                     "total_tokens": usage_dict.get('total_tokens', 0) if usage_dict else 0,

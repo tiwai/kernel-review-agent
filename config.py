@@ -102,6 +102,10 @@ def load_configuration():
         'ANALYZE_MAX_TOKENS': 16000,
         'VERIFY_MAX_TOKENS': 16000,
 
+        # Thinking level override for the verification phase (None = server default)
+        'VERIFY_REASONING_EFFORT': None,         # 'low', 'medium' or 'high'
+        'VERIFY_CHAT_TEMPLATE_KWARGS': None,     # dict, e.g. {"enable_thinking": false}
+
         # Response truncation detection
         'TRUNCATION_WARNING_THRESHOLD': 0.95,
 
@@ -196,6 +200,8 @@ DEFAULT_MAX_TOKENS = _config['DEFAULT_MAX_TOKENS']
 CATEGORIZE_MAX_TOKENS = _config['CATEGORIZE_MAX_TOKENS']
 ANALYZE_MAX_TOKENS = _config['ANALYZE_MAX_TOKENS']
 VERIFY_MAX_TOKENS = _config['VERIFY_MAX_TOKENS']
+VERIFY_REASONING_EFFORT = _config['VERIFY_REASONING_EFFORT']
+VERIFY_CHAT_TEMPLATE_KWARGS = _config['VERIFY_CHAT_TEMPLATE_KWARGS']
 TRUNCATION_WARNING_THRESHOLD = _config['TRUNCATION_WARNING_THRESHOLD']
 MAX_RETRIES = _config['MAX_RETRIES']
 RETRY_DELAY = _config['RETRY_DELAY']

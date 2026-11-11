@@ -89,6 +89,27 @@ from analysis import ReviewWorkflow, HybridReviewWorkflow
 from output import ReportFormatter, JSONReportFormatter, MetadataGenerator
 
 
+def json_object(text: str) -> dict:
+    """argparse type: a JSON object"""
+    try:
+        value = json.loads(text)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"invalid JSON: {e}")
+    if not isinstance(value, dict):
+        raise argparse.ArgumentTypeError("must be a JSON object")
+    return value
+
+
+def verify_thinking_kwargs(args) -> dict:
+    """Client kwargs for the verification-phase thinking overrides"""
+    kwargs = {}
+    if args.verify_reasoning_effort:
+        kwargs['verify_reasoning_effort'] = args.verify_reasoning_effort
+    if args.verify_chat_template_kwargs:
+        kwargs['verify_chat_template_kwargs'] = args.verify_chat_template_kwargs
+    return kwargs
+
+
 def process_commit_worker(instance_id, work_queue, results_queue, args, host_reset_event, stop_event):
     """
     Worker process for parallel commit processing.
@@ -130,6 +151,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
             })
             if args.reasoning_effort:
                 provider_kwargs['reasoning_effort'] = args.reasoning_effort
+            provider_kwargs.update(verify_thinking_kwargs(args))
         elif provider == 'ollama':
             provider_kwargs.update({
                 'host': args.host,
@@ -137,6 +159,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
             })
             if args.reasoning_effort:
                 provider_kwargs['reasoning_effort'] = args.reasoning_effort
+            provider_kwargs.update(verify_thinking_kwargs(args))
         elif provider == 'anthropic':
             if args.anthropic_api_key:
                 provider_kwargs['api_key'] = args.anthropic_api_key
@@ -249,7 +272,8 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                 verbose=args.verbose,
                 debug=args.debug,
                 dump_prompts=args.save_prompts,
-                reasoning_effort=args.reasoning_effort or None
+                reasoning_effort=args.reasoning_effort or None,
+                **verify_thinking_kwargs(args)
             )
 
             if enable_reset:
@@ -650,6 +674,23 @@ Examples:
     )
 
     parser.add_argument(
+        "--verify-reasoning-effort",
+        choices=["low", "medium", "high"],
+        default=config.VERIFY_REASONING_EFFORT,
+        help="Reasoning effort used only in the verification phase "
+             "(default: same as --reasoning-effort)"
+    )
+
+    parser.add_argument(
+        "--verify-chat-template-kwargs",
+        type=json_object,
+        metavar="JSON",
+        default=config.VERIFY_CHAT_TEMPLATE_KWARGS,
+        help="chat_template_kwargs JSON object sent only in the verification phase, "
+             "e.g. '{\"enable_thinking\": false}' for qwen3 (openai provider only)"
+    )
+
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose output"
@@ -996,6 +1037,7 @@ Examples:
             })
             if args.reasoning_effort:
                 provider_kwargs['reasoning_effort'] = args.reasoning_effort
+            provider_kwargs.update(verify_thinking_kwargs(args))
         elif provider == 'ollama':
             provider_kwargs.update({
                 'host': args.host,
@@ -1003,6 +1045,7 @@ Examples:
             })
             if args.reasoning_effort:
                 provider_kwargs['reasoning_effort'] = args.reasoning_effort
+            provider_kwargs.update(verify_thinking_kwargs(args))
         elif provider == 'anthropic':
             if args.anthropic_api_key:
                 provider_kwargs['api_key'] = args.anthropic_api_key
@@ -1188,7 +1231,8 @@ Examples:
                 verbose=args.verbose,
                 debug=args.debug,
                 dump_prompts=args.save_prompts,
-                reasoning_effort=args.reasoning_effort or None
+                reasoning_effort=args.reasoning_effort or None,
+                **verify_thinking_kwargs(args)
             )
 
             # Wrap ToolEnabledClient with resilient client if host reset enabled

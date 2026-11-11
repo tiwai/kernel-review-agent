@@ -2,6 +2,7 @@
 
 import json
 import re
+import functools
 import subprocess
 import sys
 from typing import List, Dict, Optional
@@ -12,6 +13,15 @@ from llm_integration import OpenAIClient
 from prompt_management import PromptLoader, SubsystemMatcher
 from analysis.code_context import CodeContextLoader
 import config
+
+
+def verification_phase(method):
+    """Run a workflow method with the verification-phase thinking overrides active."""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self.llm.thinking_scope(True):
+            return method(self, *args, **kwargs)
+    return wrapper
 
 
 @dataclass
@@ -1127,6 +1137,7 @@ JSON array:"""
 
         return []
 
+    @verification_phase
     def _verify_findings(
         self,
         findings: List[Dict],

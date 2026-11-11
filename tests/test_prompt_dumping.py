@@ -88,6 +88,8 @@ def test_openai_prompt_dumping():
                 self.debug = False
                 self.model = "test-model"
                 self.reasoning_effort = None
+                self.effective_reasoning_effort = None
+                self._active_overrides = {}
 
             # Import the methods we want to test
             _dump_prompt = OpenAIClient._dump_prompt

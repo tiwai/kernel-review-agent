@@ -1,7 +1,8 @@
 """Abstract base class for LLM clients."""
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional
+from contextlib import contextmanager
+from typing import List, Dict, Optional, Any
 import config
 
 
@@ -12,6 +13,10 @@ def make_base_url(host: str, port: int) -> str:
 
 class LLMClient(ABC):
     """Abstract base class for LLM API clients."""
+
+    # Class-level defaults (never mutated) keep partially-initialized clients usable
+    verify_overrides: Dict[str, Any] = {}
+    _active_overrides: Dict[str, Any] = {}
 
     def __init__(
         self,
@@ -37,10 +42,24 @@ class LLMClient(ABC):
         self.dump_prompts = dump_prompts
         self.dump_dir = dump_dir or config.DEBUG_DUMP_DIR  # Fallback for compatibility
         self.call_counter = 0
+        # Request overrides applied inside thinking_scope() (verification phase)
+        self.verify_overrides: Dict[str, Any] = {}
+        self._active_overrides: Dict[str, Any] = {}
         # Token usage tracking
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
         self.total_tokens = 0
+
+    @contextmanager
+    def thinking_scope(self, enabled: bool = True):
+        """Apply the verification-phase thinking overrides to requests made inside."""
+        previous = self._active_overrides
+        if enabled and self.verify_overrides:
+            self._active_overrides = self.verify_overrides
+        try:
+            yield
+        finally:
+            self._active_overrides = previous
 
     @abstractmethod
     def analyze_code(

@@ -491,6 +491,18 @@ python kernel_review_agent.py HEAD --reasoning-effort low
 
 Some models (e.g. gpt-oss) accept a `reasoning_effort` parameter controlling how much thinking the model applies before responding. Higher effort produces more thorough analysis at the cost of slower responses. Models that don't support this parameter silently ignore it.
 
+The thinking level can be changed for the verification phase only (deep-dive verification, skeptic pass, and `--reverify`), leaving the other phases at the server default or `--reasoning-effort`:
+
+```bash
+# gpt-oss style: lower effort when verifying
+python kernel_review_agent.py HEAD --verify-reasoning-effort low
+
+# qwen3 style: pass chat_template_kwargs to the llama.cpp server (openai provider only)
+python kernel_review_agent.py HEAD --verify-chat-template-kwargs '{"enable_thinking": false}'
+```
+
+The same settings can be given in the config file as `VERIFY_REASONING_EFFORT` and `VERIFY_CHAT_TEMPLATE_KWARGS` (a JSON object); command-line options take precedence.
+
 ```bash
 # Re-run review if no issues found and it completed within 60 seconds
 python kernel_review_agent.py HEAD --reevaluate-threshold 60
@@ -906,6 +918,8 @@ All options are optional. See `config.json.example` for a complete template.
 - `CATEGORIZE_MAX_TOKENS`: Categorization tokens (default: `8000`)
 - `ANALYZE_MAX_TOKENS`: Analysis tokens (default: `16000`)
 - `VERIFY_MAX_TOKENS`: Verification tokens (default: `16000`)
+- `VERIFY_REASONING_EFFORT`: Reasoning effort (`low`/`medium`/`high`) for the verification phase only (default: `null`, unchanged)
+- `VERIFY_CHAT_TEMPLATE_KWARGS`: `chat_template_kwargs` object sent only in the verification phase, e.g. `{"enable_thinking": false}` (default: `null`)
 
 **Timeouts:**
 - `LLM_TIMEOUT`: Request timeout in seconds (default: `300`)

@@ -1,6 +1,7 @@
 """Resilient LLM client wrapper with automatic host reset on fatal errors."""
 
 import sys
+from contextlib import contextmanager
 from typing import List, Dict, Optional
 from .base_client import LLMClient
 from .error_detector import is_fatal_host_error
@@ -171,6 +172,12 @@ class ResilientLLMClient(LLMClient):
                 commit_ref=commit_ref
             )
         )
+
+    @contextmanager
+    def thinking_scope(self, enabled: bool = True):
+        """Delegate the verification thinking scope to the wrapped client."""
+        with self.client.thinking_scope(enabled):
+            yield
 
     def _call_with_reset(self, operation):
         """

@@ -4,7 +4,7 @@ import json
 import re
 from typing import List, Dict, Optional
 
-from .workflow import ReviewWorkflow, ReviewResult
+from .workflow import ReviewWorkflow, ReviewResult, verification_phase
 from .backport_verifier import BackportVerifier, BackportComparison
 from git_integration import Commit, git_ref_for_commit
 from llm_integration import ToolEnabledClient
@@ -191,6 +191,7 @@ class HybridReviewWorkflow(ReviewWorkflow):
 
         return result
 
+    @verification_phase
     def _verify_findings_with_tools(self, commit: Commit, findings: List[Dict]) -> List[Dict]:
         """
         Use tool calling to verify and enhance findings.
@@ -696,6 +697,7 @@ Be concise but show the trace."""
 
         return callbacks
 
+    @verification_phase
     def _free_form_skeptic_pass(
         self,
         commit: Commit,
