@@ -103,8 +103,8 @@ def load_configuration():
         'VERIFY_MAX_TOKENS': 16000,
 
         # Thinking level override for the verification phase (None = server default)
-        'VERIFY_REASONING_EFFORT': None,         # 'low', 'medium' or 'high'
-        'VERIFY_CHAT_TEMPLATE_KWARGS': None,     # dict, e.g. {"enable_thinking": false}
+        'VERIFY_REASONING_EFFORT': None,         # 'none', 'low', 'medium', 'high' or 'xhigh'
+        'VERIFY_CHAT_TEMPLATE_KWARGS': False,    # also send the level as chat_template_kwargs
 
         # Response truncation detection
         'TRUNCATION_WARNING_THRESHOLD': 0.95,

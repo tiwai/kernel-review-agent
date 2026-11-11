@@ -89,17 +89,6 @@ from analysis import ReviewWorkflow, HybridReviewWorkflow
 from output import ReportFormatter, JSONReportFormatter, MetadataGenerator
 
 
-def json_object(text: str) -> dict:
-    """argparse type: a JSON object"""
-    try:
-        value = json.loads(text)
-    except ValueError as e:
-        raise argparse.ArgumentTypeError(f"invalid JSON: {e}")
-    if not isinstance(value, dict):
-        raise argparse.ArgumentTypeError("must be a JSON object")
-    return value
-
-
 def verify_thinking_kwargs(args) -> dict:
     """Client kwargs for the verification-phase thinking overrides"""
     kwargs = {}
@@ -675,19 +664,19 @@ Examples:
 
     parser.add_argument(
         "--verify-reasoning-effort",
-        choices=["low", "medium", "high", "xhigh"],
+        choices=["none", "low", "medium", "high", "xhigh"],
         default=config.VERIFY_REASONING_EFFORT,
         help="Reasoning effort used only in the verification phase "
-             "(default: same as --reasoning-effort)"
+             "(default: same as --reasoning-effort); 'none' needs --verify-chat-template-kwargs"
     )
 
     parser.add_argument(
         "--verify-chat-template-kwargs",
-        type=json_object,
-        metavar="JSON",
+        action=argparse.BooleanOptionalAction,
         default=config.VERIFY_CHAT_TEMPLATE_KWARGS,
-        help="chat_template_kwargs JSON object sent only in the verification phase, "
-             "e.g. '{\"enable_thinking\": false}' for qwen3 (openai provider only)"
+        help="Also pass --verify-reasoning-effort as chat_template_kwargs, for models whose "
+             "chat template takes the level from there; 'none' sends enable_thinking=false "
+             "(openai provider only, default: off)"
     )
 
     parser.add_argument(

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Tests for the verification-phase thinking overrides."""
 
-import argparse
 import os
 import sys
 import unittest
@@ -35,13 +34,31 @@ class TestThinkingScope(unittest.TestCase):
         client = make_client(
             reasoning_effort="high",
             verify_reasoning_effort="low",
-            verify_chat_template_kwargs={"enable_thinking": False})
+            verify_chat_template_kwargs=True)
         self.assertEqual(payload(client), {"reasoning_effort": "high"})
         with client.thinking_scope(True):
             self.assertEqual(payload(client), {
                 "reasoning_effort": "low",
-                "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}})
+                "extra_body": {"chat_template_kwargs": {"reasoning_effort": "low"}}})
         self.assertEqual(payload(client), {"reasoning_effort": "high"})
+
+    def test_effort_only_without_toggle(self):
+        client = make_client(verify_reasoning_effort="xhigh")
+        with client.thinking_scope(True):
+            self.assertEqual(payload(client), {"reasoning_effort": "xhigh"})
+
+    def test_none_with_toggle_disables_thinking(self):
+        client = make_client(reasoning_effort="high", verify_reasoning_effort="none",
+                             verify_chat_template_kwargs=True)
+        with client.thinking_scope(True):
+            self.assertEqual(payload(client), {
+                "reasoning_effort": "high",
+                "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}})
+
+    def test_toggle_without_effort_is_noop(self):
+        client = make_client(verify_chat_template_kwargs=True)
+        with client.thinking_scope(True):
+            self.assertEqual(payload(client), {})
 
     def test_scope_disabled(self):
         client = make_client(verify_reasoning_effort="low")
@@ -56,7 +73,7 @@ class TestThinkingScope(unittest.TestCase):
         self.assertEqual(payload(client), {})
 
     def test_tool_client_create(self):
-        client = make_client(ToolEnabledClient, verify_chat_template_kwargs={"enable_thinking": False})
+        client = make_client(ToolEnabledClient, verify_reasoning_effort="none", verify_chat_template_kwargs=True)
         client.client.chat.completions.create.return_value = "resp"
         with client.thinking_scope(True):
             client._create([], 10, None)
@@ -71,15 +88,6 @@ class TestThinkingScope(unittest.TestCase):
         with wrapper.thinking_scope(True):
             self.assertEqual(payload(inner), {"reasoning_effort": "low"})
         self.assertEqual(payload(inner), {})
-
-
-class TestCliHelpers(unittest.TestCase):
-    def test_json_object(self):
-        import kernel_review_agent as kra
-        self.assertEqual(kra.json_object('{"a": 1}'), {"a": 1})
-        for bad in ('[1]', 'nope'):
-            with self.assertRaises(argparse.ArgumentTypeError):
-                kra.json_object(bad)
 
 
 if __name__ == '__main__':

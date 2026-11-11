@@ -26,7 +26,7 @@ class OpenAIClient(LLMClient):
         dump_dir: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
         verify_reasoning_effort: Optional[str] = None,
-        verify_chat_template_kwargs: Optional[Dict[str, Any]] = None,
+        verify_chat_template_kwargs: bool = False,
         **kwargs
     ):
         """
@@ -43,8 +43,9 @@ class OpenAIClient(LLMClient):
             dump_dir: (Deprecated) Legacy dump directory
             reasoning_effort: Reasoning effort level for models that support it
             verify_reasoning_effort: Reasoning effort override for the verification phase
-            verify_chat_template_kwargs: chat_template_kwargs override for the verification
-                phase, e.g. {"enable_thinking": False}
+            verify_chat_template_kwargs: Also send the verification effort as
+                chat_template_kwargs, for models whose chat template takes the
+                level from there ('none' becomes enable_thinking=false)
         """
         super().__init__(model, verbose, debug, dump_prompts, dump_dir)
 
@@ -52,9 +53,8 @@ class OpenAIClient(LLMClient):
         self.api_key = api_key
         self.reasoning_effort = reasoning_effort
         if verify_reasoning_effort:
-            self.verify_overrides['reasoning_effort'] = verify_reasoning_effort
-        if verify_chat_template_kwargs:
-            self.verify_overrides['chat_template_kwargs'] = verify_chat_template_kwargs
+            self.verify_overrides = self._verify_overrides(
+                verify_reasoning_effort, verify_chat_template_kwargs)
 
         try:
             # For HTTP connections (local servers), disable SSL verification
@@ -125,6 +125,16 @@ class OpenAIClient(LLMClient):
         """
         response_text, _ = self._call_with_retry(messages, max_tokens, temperature, stage_name, commit_output_dir)
         return response_text
+
+    @staticmethod
+    def _verify_overrides(effort: str, chat_template_kwargs: bool) -> Dict[str, Any]:
+        """Request overrides for the verification phase from a reasoning effort level."""
+        if not chat_template_kwargs:
+            return {'reasoning_effort': effort}
+        if effort == 'none':
+            return {'chat_template_kwargs': {'enable_thinking': False}}
+        return {'reasoning_effort': effort,
+                'chat_template_kwargs': {'reasoning_effort': effort}}
 
     @property
     def effective_reasoning_effort(self) -> Optional[str]:

@@ -17,7 +17,7 @@
 
   "_comment_verify_thinking": "Thinking level override for the verification phase only (null = server default)",
   "VERIFY_REASONING_EFFORT": null,
-  "VERIFY_CHAT_TEMPLATE_KWARGS": null,
+  "VERIFY_CHAT_TEMPLATE_KWARGS": false,
 
   "TRUNCATION_WARNING_THRESHOLD": 0.95,
 
