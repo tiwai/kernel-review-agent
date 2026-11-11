@@ -44,6 +44,10 @@ class ReviewResult:
 class ReviewWorkflow:
     """Orchestrate 5-task review protocol."""
 
+    # When True, execute_review() leaves fix proposal to the caller so it can
+    # run after any additional verification phases.
+    defer_fix_proposal = False
+
     def __init__(
         self,
         llm_client: OpenAIClient,
@@ -557,14 +561,13 @@ class ReviewWorkflow:
         if self.debug:
             print(f"Summary: {summary}")
 
-        # Task 5 (optional): Propose fix patches
+        # Task 5 (optional): Propose fix patches.  Subclasses that run further
+        # verification phases defer this so it operates on the final findings.
         fix_patches = None
-        if self.propose_fixes and verified:
-            if self.verbose:
-                print("\n[+] Proposing fix patches...")
-            if self.debug:
-                print(f"Task 5: Proposing fixes for {len(verified)} finding(s)")
-            fix_patches = self._propose_fixes(commit, verified, context, categories)
+        if not self.defer_fix_proposal:
+            fix_patches = self._propose_fixes_for_findings(
+                commit, verified, context, categories
+            )
 
         if self.verbose:
             print(f"\nReview complete: {len(verified)} issue(s) found\n")
@@ -1439,6 +1442,22 @@ JSON array (empty [] if false positive):"""
                 return False
 
         return True
+
+    def _propose_fixes_for_findings(
+        self,
+        commit: Commit,
+        findings: List[Dict],
+        context: Dict,
+        categories: List[Dict]
+    ) -> Optional[str]:
+        """Run the optional fix-proposal step if enabled and there are findings."""
+        if not self.propose_fixes or not findings:
+            return None
+        if self.verbose:
+            print("\n[+] Proposing fix patches...")
+        if self.debug:
+            print(f"Task 5: Proposing fixes for {len(findings)} finding(s)")
+        return self._propose_fixes(commit, findings, context, categories)
 
     def _propose_fixes(
         self,

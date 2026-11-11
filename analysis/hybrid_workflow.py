@@ -62,7 +62,20 @@ class HybridReviewWorkflow(ReviewWorkflow):
         if not isinstance(actual_client, ToolEnabledClient):
             raise TypeError("HybridReviewWorkflow requires ToolEnabledClient")
 
+    # Fix patches are proposed last, once the findings are final
+    defer_fix_proposal = True
+
     def execute_review(self, commit: Commit, commit_output_dir: Optional[str] = None) -> ReviewResult:
+        result = self._execute_review_phases(commit, commit_output_dir)
+        result.fix_patches = self._propose_fixes_for_findings(
+            commit,
+            result.findings,
+            {'code_context_formatted': result.code_context_formatted},
+            result.categories or [],
+        )
+        return result
+
+    def _execute_review_phases(self, commit: Commit, commit_output_dir: Optional[str] = None) -> ReviewResult:
         """
         Execute review with hybrid approach.
 
@@ -134,13 +147,11 @@ class HybridReviewWorkflow(ReviewWorkflow):
         # Update result with verified findings
         result.findings = verified_findings
 
-        # Keep summary and fix_patches consistent if Phase 2 changed the finding set
+        # Keep summary consistent if Phase 2 changed the finding set
         if len(verified_findings) != pre_phase2_count:
             result.summary = self._generate_summary(
                 commit, verified_findings, result.upstream_verification
             )
-            if not verified_findings:
-                result.fix_patches = None
 
         # Phase 3: Free-form skeptic pass
         if verified_findings:
@@ -157,8 +168,6 @@ class HybridReviewWorkflow(ReviewWorkflow):
                 result.summary = self._generate_summary(
                     commit, verified_findings, result.upstream_verification
                 )
-                if not verified_findings:
-                    result.fix_patches = None
 
                 if self.verbose:
                     discarded = pre_phase3_count - len(verified_findings)
