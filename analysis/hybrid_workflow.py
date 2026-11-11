@@ -6,6 +6,7 @@ from typing import List, Dict, Optional
 
 from .workflow import ReviewWorkflow, ReviewResult, verification_phase
 from .backport_verifier import BackportVerifier, BackportComparison
+from .fix_checker import FixChecker, apply_default_fix_status
 from git_integration import Commit, git_ref_for_commit
 from llm_integration import ToolEnabledClient
 import config
@@ -26,6 +27,7 @@ class HybridReviewWorkflow(ReviewWorkflow):
         enable_tools: bool = True,
         upstream_repo=None,
         kernel_source_repo=None,
+        fix_checker: Optional[FixChecker] = None,
         **kwargs
     ):
         """
@@ -38,10 +40,12 @@ class HybridReviewWorkflow(ReviewWorkflow):
             kernel_source_repo: MultiRepoExtractor for intermediate patch repository (to resolve
                 upstream references from distro-commit tags when the downstream commit
                 carries only a distro-commit tag)
+            fix_checker: FixChecker to look for later fixes of the findings (None = skip)
             *args, **kwargs: Passed to ReviewWorkflow
         """
         super().__init__(llm_client, *args, **kwargs)
         self.enable_tools = enable_tools
+        self.fix_checker = fix_checker
         self.backport_verifier = BackportVerifier(
             upstream_repo=upstream_repo,
             kernel_source_repo=kernel_source_repo,
@@ -67,9 +71,10 @@ class HybridReviewWorkflow(ReviewWorkflow):
 
     def execute_review(self, commit: Commit, commit_output_dir: Optional[str] = None) -> ReviewResult:
         result = self._execute_review_phases(commit, commit_output_dir)
+        # No point in patching what a later commit already fixed on the target branch
         result.fix_patches = self._propose_fixes_for_findings(
             commit,
-            result.findings,
+            [f for f in result.findings if f.get('fix-status') != 'fixed'],
             {'code_context_formatted': result.code_context_formatted},
             result.categories or [],
         )
@@ -174,7 +179,44 @@ class HybridReviewWorkflow(ReviewWorkflow):
                     print(f"      Discarded {discarded} as false positive(s); "
                           f"{len(verified_findings)} remaining")
 
+        self._check_later_fixes(commit, result)
         return result
+
+    def _resolve_upstream_sha(self, commit: Commit) -> Optional[str]:
+        """Upstream commit ID of the commit, following the distro-commit tag if needed."""
+        if commit.upstream_commit:
+            return commit.upstream_commit
+        repo = self.backport_verifier.kernel_source_repo
+        if commit.distro_commit and repo and repo.is_available():
+            distro = repo.get_commit(commit.distro_commit)
+            if distro:
+                return distro.upstream_commit
+        return None
+
+    @verification_phase
+    def _check_later_fixes(self, commit: Commit, result) -> None:
+        """Phase 4: check whether the findings are already fixed by a later commit."""
+        findings = result.findings
+        if not findings:
+            return
+        if not self.fix_checker:
+            apply_default_fix_status(findings)
+            return
+        if self.verbose:
+            print(f"\n=== Phase 4: Later-fix Check ({len(findings)} findings) ===")
+        try:
+            self.fix_checker.check(
+                self.llm, commit, findings, self._resolve_upstream_sha(commit),
+                max_iterations=self.max_tool_iterations
+            )
+        except Exception as e:
+            # Never lose a review because of this optional step
+            if self.verbose or self.debug:
+                print(f"      [FIXCHECK] Skipped: {e}")
+            apply_default_fix_status(findings)
+        if self.verbose:
+            fixed = [f for f in findings if f.get('fix-status') != 'not-fixed']
+            print(f"      {len(fixed)} finding(s) already fixed later")
 
     def _post_verify_hook(self, commit: Commit, result) -> object:
         """Apply Phase 3 free-form skeptic pass after re-verification."""
@@ -197,6 +239,8 @@ class HybridReviewWorkflow(ReviewWorkflow):
                 discarded = pre_phase3_count - len(result.findings)
                 print(f"      Discarded {discarded} as false positive(s); "
                       f"{len(result.findings)} remaining")
+
+        self._check_later_fixes(commit, result)
 
         return result
 

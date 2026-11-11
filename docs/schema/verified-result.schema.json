@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "verified-result.schema.json",
+  "title": "verified-result.json (schema-version 2)",
+  "description": "Re-verification result written by the re-verify-kreview command (~/.claude/commands/re-verify-kreview.md). Pure JSON, kebab-case keys only, no aliases. Consistency rules not expressible in JSON Schema: original-findings == len(findings); issues-found == count(status 'confirmed'); issues-pruned == count(status 'pruned'); verdict is 'unsafe' iff issues-found > 0 else 'safe'; issues-fixed == count(status 'confirmed' and fix-status 'fixed'). Findings stay in the order of the review.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema-version", "commit", "model", "verified-by", "verified-date",
+    "verdict", "summary", "original-findings", "issues-found",
+    "issues-pruned", "issues-fixed", "future-fix", "findings"
+  ],
+  "properties": {
+    "schema-version": { "const": 2 },
+    "commit": {
+      "description": "Full SHA1 of the downstream commit",
+      "type": "string", "pattern": "^[0-9a-f]{40}$"
+    },
+    "model": {
+      "description": "Model that did the review (the db directory name), not the verifier",
+      "type": "string"
+    },
+    "subject": { "type": "string", "description": "Copied from the review JSON" },
+    "author": { "type": "string", "description": "Copied from the review JSON" },
+    "distro-commit": { "type": "string", "description": "Copied from the review JSON" },
+    "upstream-commit": { "type": ["string", "null"], "description": "Copied from the review JSON" },
+    "branch": {
+      "description": "Target branch, always with the origin/ prefix",
+      "type": "string", "pattern": "^origin/"
+    },
+    "verified-by": { "type": "string", "description": "Verifier model name, e.g. claude-opus-5-5" },
+    "verified-date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "verdict": { "enum": ["safe", "unsafe"] },
+    "summary": { "type": "string", "description": "1-5 sentences of the overall conclusion" },
+    "original-findings": { "type": "integer", "minimum": 0 },
+    "issues-found": { "type": "integer", "minimum": 0 },
+    "issues-pruned": { "type": "integer", "minimum": 0 },
+    "issues-fixed": { "type": "integer", "minimum": 0 },
+    "future-fix": {
+      "description": "One-line summary of the later fixes (downstream or upstream commit IDs) of the confirmed issues; null if no confirmed finding has a fix",
+      "type": ["string", "null"]
+    },
+    "backport-status": { "type": "string", "description": "e.g. clean, modified" },
+    "notes": { "type": "string" },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category", "type", "severity", "confidence", "message", "evidence",
+        "upstream-status", "status", "reason", "fix-status", "future-fix"
+      ],
+      "properties": {
+        "id": { "type": "integer", "description": "Finding number in the review" },
+        "category": { "type": "string", "description": "Copied from the review, e.g. CHANGE-1" },
+        "type": { "type": "string", "description": "Copied from the review, e.g. use-after-free" },
+        "severity": { "enum": ["high", "medium", "low"], "description": "As judged after verification" },
+        "original-severity": { "enum": ["high", "medium", "low"], "description": "Only if severity was changed" },
+        "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "location": { "type": "string", "description": "file[:function]" },
+        "message": { "type": "string", "description": "Verbatim from the review" },
+        "evidence": { "type": "string", "description": "Verbatim from the review" },
+        "upstream-status": {
+          "enum": ["downstream-only", "present-in-upstream", "unknown"],
+          "description": "downstream-only: introduced by the downstream backport; present-in-upstream: same flaw in the upstream commit"
+        },
+        "status": { "enum": ["confirmed", "pruned"] },
+        "reason": { "type": "string", "description": "Why confirmed / pruned, citing the code checked" },
+        "fix-status": {
+          "description": "fixed: fixed (or flawed code removed/reverted) by a later commit already in origin/<branch>; fixed-upstream: a fix exists upstream (or only in another branch) but not in origin/<branch> yet; not-fixed: no later fix found. Always null for pruned findings.",
+          "enum": ["fixed", "fixed-upstream", "not-fixed", null]
+        },
+        "future-fix": {
+          "description": "Fixing commit(s) with location, e.g. \"5bf62f727580 (origin/SLE12-SP5); 89f0addeee3c (upstream)\". Always null for not-fixed and pruned findings.",
+          "type": ["string", "null"]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "pruned" } }, "required": ["status"] },
+          "then": { "properties": { "fix-status": { "const": null }, "future-fix": { "const": null } } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "confirmed" } }, "required": ["status"] },
+          "then": { "properties": { "fix-status": { "enum": ["fixed", "fixed-upstream", "not-fixed"] } } }
+        },
+        {
+          "if": { "properties": { "fix-status": { "const": "not-fixed" } }, "required": ["fix-status"] },
+          "then": { "properties": { "future-fix": { "const": null } } }
+        },
+        {
+          "if": { "properties": { "fix-status": { "enum": ["fixed", "fixed-upstream"] } }, "required": ["fix-status"] },
+          "then": { "properties": { "future-fix": { "type": "string" } } }
+        }
+      ]
+    }
+  }
+}

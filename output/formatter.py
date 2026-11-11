@@ -215,6 +215,12 @@ class ReportFormatter:
                     header_parts.append(f"severity: {severity}")
                 if confidence:
                     header_parts.append(f"confidence: {confidence}")
+                # Only worth showing when a later fix exists
+                fix_status = finding.get('fix-status')
+                if fix_status and fix_status != 'not-fixed':
+                    header_parts.append(f"fix-status: {fix_status}")
+                    if finding.get('future-fix'):
+                        header_parts.append(f"future-fix: {finding['future-fix']}")
                 if header_parts:
                     result += f"[Finding {i} — {', '.join(header_parts)}]\n"
                 message = finding.get('message', 'Potential issue found')

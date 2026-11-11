@@ -400,6 +400,22 @@ Hybrid mode:   "Timer callback signature mismatch CONFIRMED:
 - Only works with OpenAI-compatible providers (`--provider openai` or `--provider ollama`)
 - Other providers fall back to standard mode automatically
 
+### Later-Fix Check
+
+```bash
+# Look for later fixes on origin/SL-16.0 and upstream
+TARGET=SL-16.0 python kernel_review_agent.py HEAD
+python kernel_review_agent.py HEAD --target-branch SL-16.0 --upstream-repo ~/git/linus
+python kernel_review_agent.py HEAD --no-fix-check   # skip the check
+```
+
+After verification (hybrid mode), each remaining finding is checked against later commits: `<commit>..origin/<target>` of the current repository (`--target-branch`, default `$TARGET`) and `<upstream-commit>..origin/master` of the upstream repository. Candidates (commits with a matching `Fixes:` tag or touching the same files) are judged by the LLM. Each finding gets:
+
+- `fix-status`: `fixed` (a later commit is already in `origin/<target>`), `fixed-upstream` (fix exists upstream only) or `not-fixed`
+- `future-fix`: fixing commit(s) with location, e.g. `5bf62f727580 (origin/SL-16.0); 89f0addeee3c (upstream)`, or null
+
+`review-inline.json` and `review-metadata.json` also get `issues-fixed` and a one-line `future-fix`. Fix patches are not proposed for `fixed` findings. Without a target branch only upstream is checked. The JSON schemas are in `docs/schema/`.
+
 ### Fix Patch Proposals
 
 ```bash

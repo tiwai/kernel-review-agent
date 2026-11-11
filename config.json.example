@@ -19,6 +19,10 @@
   "VERIFY_REASONING_EFFORT": null,
   "VERIFY_CHAT_TEMPLATE_KWARGS": false,
 
+  "_comment_fix_check": "Check whether findings are already fixed on origin/<TARGET_BRANCH> (default: $TARGET) or upstream",
+  "FIX_CHECK": true,
+  "TARGET_BRANCH": null,
+
   "TRUNCATION_WARNING_THRESHOLD": 0.95,
 
   "MAX_RETRIES": 1,

@@ -2,6 +2,7 @@
 
 from typing import List, Dict, Optional
 from git_integration import Commit
+from .fix_info import summarize_future_fixes as _summarize_future_fixes
 
 
 class JSONReportFormatter:
@@ -97,6 +98,11 @@ class JSONReportFormatter:
         # Structured findings list
         report["findings"] = [self._format_finding(f) for f in findings]
 
+        # Later-fix check results (only if the check ran)
+        if any("fix-status" in f for f in findings):
+            report["issues-fixed"] = sum(1 for f in findings if f.get("fix-status") == "fixed")
+            report["future-fix"] = _summarize_future_fixes(findings)
+
         if elapsed_time is not None:
             report["review-time-seconds"] = round(elapsed_time, 2)
 
@@ -114,7 +120,7 @@ class JSONReportFormatter:
         """Return a clean copy of a finding dict with well-defined keys."""
         result: Dict = {}
         for key in ("category", "type", "severity", "confidence", "message",
-                    "evidence", "upstream_status"):
+                    "evidence", "upstream_status", "fix-status", "future-fix"):
             if key in finding:
                 result[key] = finding[key]
         # Carry through any extra keys the LLM may have added

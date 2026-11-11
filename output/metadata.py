@@ -3,6 +3,7 @@
 import json
 from typing import List, Dict, Optional
 from git_integration import Commit
+from .fix_info import summarize_future_fixes
 
 
 class MetadataGenerator:
@@ -46,6 +47,11 @@ class MetadataGenerator:
             "issue-severity-score": severity,
             "issue-severity-explanation": explanation
         }
+
+        # Later-fix check results (only if the check ran)
+        if any("fix-status" in f for f in findings):
+            metadata["issues-fixed"] = sum(1 for f in findings if f.get("fix-status") == "fixed")
+            metadata["future-fix"] = summarize_future_fixes(findings)
 
         # Include commit SHA for commits (not for patches)
         if not is_patch:

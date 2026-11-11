@@ -1210,11 +1210,12 @@ Your goal is to DISPROVE the reported finding. You must look for:
 
             finding_type = finding.get('type', '')
             scope = self._classify_finding_scope(finding, commit)
-            # upstream_status / diff_scope are pipeline labels; hide them so the
-            # verifier is not biased by a possibly wrong "downstream_only".
+            # upstream_status / diff_scope / fix-status / future-fix are pipeline labels;
+            # hide them so the verifier is not biased by a possibly wrong "downstream_only".
             finding_text = json.dumps(
                 {k: v for k, v in finding.items()
-                 if k not in ('upstream_status', 'diff_scope')},
+                 if k not in ('upstream_status', 'diff_scope',
+                              'fix-status', 'future-fix')},
                 indent=2)
             scope_note = ""
             if scope == 'outside-diff':

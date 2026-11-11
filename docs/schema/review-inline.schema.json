@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "review-inline.schema.json",
+  "title": "review-inline.json",
+  "description": "Structured review result written by this agent (output/json_formatter.py). Top-level keys are kebab-case; per-finding keys keep the LLM's names (underscore, e.g. upstream_status) except fix-status and future-fix, which are kebab-case like in verified-result.json. fix-status/future-fix and the top-level issues-fixed/future-fix are present only if the later-fix check ran (--fix-check, the default, in hybrid mode with findings). review-metadata.json carries the same issues-found / issues-fixed / future-fix keys.",
+  "type": "object",
+  "required": ["author", "subject", "summary", "findings"],
+  "properties": {
+    "commit": { "type": "string", "description": "Omitted when reviewing a patch file" },
+    "author": { "type": "string" },
+    "subject": { "type": "string" },
+    "distro-commit": { "type": "string" },
+    "upstream-commit": { "type": "string" },
+    "upstream-verification": {
+      "type": "object",
+      "properties": {
+        "upstream-commit": { "type": "string" },
+        "upstream-subject": { "type": "string" },
+        "findings-in-upstream": { "type": "integer" },
+        "findings-downstream-only": { "type": "integer" }
+      }
+    },
+    "backport": {
+      "type": "object",
+      "properties": {
+        "upstream": { "type": "string" },
+        "status": { "enum": ["wrong function", "needs review", "minor differences", "clean"] },
+        "summary": { "type": "string" },
+        "function-mismatches": { "type": "array" }
+      }
+    },
+    "summary": { "type": "string" },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "issues-fixed": {
+      "type": "integer", "minimum": 0,
+      "description": "Number of findings with fix-status 'fixed'"
+    },
+    "future-fix": {
+      "type": ["string", "null"],
+      "description": "One-line summary of the later fixes of all findings, null if none"
+    },
+    "review-time-seconds": { "type": "number" },
+    "model": { "type": "string" },
+    "input-tokens": { "type": "integer" },
+    "output-tokens": { "type": "integer" },
+    "total-tokens": { "type": "integer" }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": ["message"],
+      "properties": {
+        "category": { "type": "string" },
+        "type": { "type": "string" },
+        "severity": { "enum": ["high", "medium", "low"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "message": { "type": "string" },
+        "evidence": { "type": ["string", "array"] },
+        "upstream_status": { "enum": ["present_in_upstream", "downstream_only"] },
+        "fix-status": {
+          "enum": ["fixed", "fixed-upstream", "not-fixed"],
+          "description": "fixed: later commit already in origin/<target>; fixed-upstream: fix exists upstream only; not-fixed: none found"
+        },
+        "future-fix": {
+          "type": ["string", "null"],
+          "description": "Fixing commits with location, e.g. \"5bf62f727580 (origin/SLE12-SP5); 89f0addeee3c (upstream)\"; null for not-fixed"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

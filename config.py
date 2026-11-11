@@ -106,6 +106,10 @@ def load_configuration():
         'VERIFY_REASONING_EFFORT': None,         # 'none', 'low', 'medium', 'high' or 'xhigh'
         'VERIFY_CHAT_TEMPLATE_KWARGS': False,    # also send the level as chat_template_kwargs
 
+        # Later-fix check: is a finding already fixed on origin/<TARGET_BRANCH> or upstream?
+        'FIX_CHECK': True,
+        'TARGET_BRANCH': None,            # overridden by --target-branch / $TARGET
+
         # Response truncation detection
         'TRUNCATION_WARNING_THRESHOLD': 0.95,
 
@@ -202,6 +206,8 @@ ANALYZE_MAX_TOKENS = _config['ANALYZE_MAX_TOKENS']
 VERIFY_MAX_TOKENS = _config['VERIFY_MAX_TOKENS']
 VERIFY_REASONING_EFFORT = _config['VERIFY_REASONING_EFFORT']
 VERIFY_CHAT_TEMPLATE_KWARGS = _config['VERIFY_CHAT_TEMPLATE_KWARGS']
+FIX_CHECK = _config['FIX_CHECK']
+TARGET_BRANCH = _config['TARGET_BRANCH']
 TRUNCATION_WARNING_THRESHOLD = _config['TRUNCATION_WARNING_THRESHOLD']
 MAX_RETRIES = _config['MAX_RETRIES']
 RETRY_DELAY = _config['RETRY_DELAY']

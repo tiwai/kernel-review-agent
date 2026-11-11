@@ -10,7 +10,7 @@ import re
 from typing import List, Dict, Optional
 
 _FINDING_HEADER_RE = re.compile(r'^\[Finding (\d+)(?: — (.*))?\]$')
-_HEADER_KEYS = ('type', 'severity', 'confidence')
+_HEADER_KEYS = ('type', 'severity', 'confidence', 'fix-status', 'future-fix')
 
 
 def _squash(text) -> str:

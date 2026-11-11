@@ -86,6 +86,7 @@ from llm_integration import create_llm_client, get_provider_from_args, ToolEnabl
 from prompt_management import PromptLoader, SubsystemMatcher
 from prompt_management.prompt_set_mapper import PromptSetMapper
 from analysis import ReviewWorkflow, HybridReviewWorkflow
+from analysis.fix_checker import FixChecker
 from output import ReportFormatter, JSONReportFormatter, MetadataGenerator
 
 
@@ -97,6 +98,22 @@ def verify_thinking_kwargs(args) -> dict:
     if args.verify_chat_template_kwargs:
         kwargs['verify_chat_template_kwargs'] = args.verify_chat_template_kwargs
     return kwargs
+
+
+def make_fix_checker(args, upstream_repo_extractor):
+    """FixChecker for the later-fix check, or None if disabled or in patch mode"""
+    if not getattr(args, 'fix_check', True) or getattr(args, 'patch', False):
+        return None
+    target = getattr(args, 'target_branch', None)
+    if not target and not upstream_repo_extractor:
+        return None
+    return FixChecker(
+        downstream_dir=os.getcwd(),
+        target_branch=target,
+        upstream_dir=upstream_repo_extractor.repo_path if upstream_repo_extractor else None,
+        verbose=args.verbose,
+        debug=args.debug,
+    )
 
 
 def process_commit_worker(instance_id, work_queue, results_queue, args, host_reset_event, stop_event):
@@ -284,6 +301,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                 enable_tools=True,
                 upstream_repo=upstream_repo_extractor,
                 kernel_source_repo=kernel_source_extractor,
+                fix_checker=make_fix_checker(args, upstream_repo_extractor),
                 propose_fixes=args.propose_fixes,
                 max_tool_iterations=args.max_tool_iterations,
                 stop_after=args.stop_after
@@ -677,6 +695,22 @@ Examples:
         help="Also pass --verify-reasoning-effort as chat_template_kwargs, for models whose "
              "chat template takes the level from there; 'none' sends enable_thinking=false "
              "(openai provider only, default: off)"
+    )
+
+    parser.add_argument(
+        "--target-branch",
+        default=os.environ.get('TARGET') or config.TARGET_BRANCH,
+        metavar="BRANCH",
+        help="Target branch of the reviewed commits; origin/BRANCH of the current repository "
+             "is searched for later fixes of the findings (default: $TARGET)"
+    )
+
+    parser.add_argument(
+        "--fix-check",
+        action=argparse.BooleanOptionalAction,
+        default=config.FIX_CHECK,
+        help="Check whether the findings were already fixed by a later commit on "
+             "origin/<target branch> or upstream and set fix-status/future-fix (default: on)"
     )
 
     parser.add_argument(
@@ -1250,6 +1284,7 @@ Examples:
                 enable_tools=True,
                 upstream_repo=upstream_repo_extractor,
                 kernel_source_repo=kernel_source_extractor,
+                fix_checker=make_fix_checker(args, upstream_repo_extractor),
                 propose_fixes=args.propose_fixes,
                 max_tool_iterations=args.max_tool_iterations,
                 stop_after=args.stop_after
