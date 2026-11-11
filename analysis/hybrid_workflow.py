@@ -722,6 +722,12 @@ Be concise but show the trace."""
             "implementations, trace call paths, verify lock state — whatever is "
             "needed to make an informed judgment. Default to skepticism: only "
             "keep a finding if you can confirm it with actual code evidence.\n\n"
+            "The goal is to find regressions INTRODUCED by this commit. Discard "
+            "findings about pre-existing issues: compare with the parent version "
+            "(get_function with version=\"before\") and drop the finding if the same "
+            "flaw is already there and the commit doesn't change its behavior. "
+            "Exception: a part of the upstream fix that this backport omitted "
+            "(see the upstream diff, if given) is a genuine issue of the commit.\n\n"
             "After your investigation, output a line in exactly this format:\n"
             "VALID_FINDINGS: [<comma-separated 1-based finding numbers>]\n"
             "Examples:\n"
@@ -753,9 +759,24 @@ Be concise but show the trace."""
                 f"{code_context}\n\n"
             )
 
+        upstream_section = ""
+        try:
+            if self.upstream_verifier:
+                _, upstream_commit = self.upstream_verifier.resolve_upstream_commit(commit)
+                if upstream_commit and upstream_commit.diff:
+                    upstream_section = (
+                        f"Upstream commit {upstream_commit.sha[:12]} diff "
+                        f"(the original this commit backports, truncated):\n"
+                        f"{upstream_commit.diff[:8000]}\n\n"
+                    )
+        except Exception as e:
+            if self.debug:
+                print(f"      [PHASE 3] Could not load upstream diff: {e}")
+
         user_prompt = (
             f"{commit_context}\n\n"
             f"Diff:\n{commit.diff}\n\n"
+            f"{upstream_section}"
             f"{code_context_section}"
             f"Reported findings to re-verify:\n\n"
             + "\n\n".join(findings_lines)

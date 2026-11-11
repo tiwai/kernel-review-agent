@@ -1026,15 +1026,23 @@ the changes) and their callers above. Use this complete context to:
 3. Trace error handling paths in both current and parent versions
 4. Confirm your analysis against the actual source code, not just the diff
 
+SCOPE: report only problems that this commit INTRODUCES or makes newly
+reachable or worse. Before reporting, compare with the PARENT VERSION shown
+above: if the same flaw already exists there and the commit does not change its
+behavior, do NOT report it. Code that the diff does not touch (e.g. another call
+site with the old pattern) may be reported only if this commit, or the upstream
+fix it backports, is meant to cover that code and leaves it broken.
+
 For each potential issue found, include a JSON object with:
 - category: Which CHANGE-X this relates to
 - type: Type of issue (use-after-free, memory-leak, null-deref, race-condition, etc.)
 - message: Question or description of the issue (conversational, no ALL CAPS)
 - evidence: Code snippets or call traces supporting the finding
 - severity: low, medium, or high
+- location: file:function where the problem is
 
 Return ONLY a JSON array of findings. No text before or after the JSON.
-Example format: [{{"category": "CHANGE-1", "type": "...", "message": "...", "evidence": "...", "severity": "..."}}]
+Example format: [{{"category": "CHANGE-1", "type": "...", "message": "...", "evidence": "...", "severity": "...", "location": "path/file.c:function"}}]
 If no issues found, return: []
 
 JSON array:"""
@@ -1187,7 +1195,21 @@ Your goal is to DISPROVE the reported finding. You must look for:
                 print(f"      Verifying finding {i+1}/{len(real_findings)}: {finding.get('type')}...")
 
             finding_type = finding.get('type', '')
-            finding_text = json.dumps(finding, indent=2)
+            scope = self._classify_finding_scope(finding, commit)
+            # upstream_status / diff_scope are pipeline labels; hide them so the
+            # verifier is not biased by a possibly wrong "downstream_only".
+            finding_text = json.dumps(
+                {k: v for k, v in finding.items()
+                 if k not in ('upstream_status', 'diff_scope')},
+                indent=2)
+            scope_note = ""
+            if scope == 'outside-diff':
+                scope_note = (
+                    "NOTE: the code cited by this finding does not appear among the lines "
+                    "changed by the diff. Keep it only if it is an incomplete backport/fix "
+                    "(this commit or its upstream original was meant to cover that code) "
+                    "or the commit newly exposes it; otherwise it is pre-existing: return [].\n\n"
+                )
 
             # Build commit context with message if available
             commit_context = f"Subject: {commit.subject}"
@@ -1226,7 +1248,15 @@ For EACH claim (symbol removed/added, function called, code path described):
 
 If ANY claim is UNVERIFIED, the finding contains a hallucination — return [].
 
-## STEP 2 — ADVERSARIAL REASONING
+## STEP 2 — REGRESSION SCOPE (mandatory)
+
+We only want regressions INTRODUCED by this commit. Using the PARENT VERSION in the
+code context, answer: does the same flaw already exist in the parent? Does the diff
+change its behavior or reachability? If the flaw is pre-existing and the commit does
+not worsen it, return []. Exception: a part of the upstream fix that this backport
+omitted is a real issue of the commit.
+
+{scope_note}## STEP 3 — ADVERSARIAL REASONING
 
 Using ONLY the grounded evidence from Step 1, apply the False Positive Prevention Guide.
 Look for guard conditions, kernel invariants, and defensive programming patterns.
@@ -1240,7 +1270,7 @@ FINDING TO VERIFY:
 {finding_text}
 
 Rules:
-1. Complete Step 1 before Step 2. Any unverified claim → return [].
+1. Complete Steps 1-3 in order. Any unverified claim → return [].
 2. If this is clearly a FALSE POSITIVE (defensive programming, kernel invariant prevents it, hallucination), return [].
 3. Otherwise return the finding (preserving all original fields) with a "confidence" field set to a scalar between 0.0 and 1.0:
    - 0.9–1.0: You are certain this is a real regression
@@ -1285,6 +1315,49 @@ JSON array (empty [] if false positive):"""
                 verified.append(finding)
 
         return verified
+
+    @staticmethod
+    def _evidence_code_lines(evidence) -> List[str]:
+        """Return the code-like lines of a finding's evidence (no prose, no ellipsis)."""
+        if isinstance(evidence, list):
+            evidence = '\n'.join(str(item) for item in evidence)
+        lines = []
+        for line in (evidence or '').split('\n'):
+            stripped = line.strip()
+            if stripped and len(stripped) > 5 and stripped != '...':
+                if not any(stripped.lower().startswith(word) for word in
+                           ['the', 'this', 'shows', 'standard', 'pattern', 'caller', 'diff']):
+                    lines.append(stripped)
+        return lines
+
+    def _classify_finding_scope(self, finding: Dict, commit: Commit) -> str:
+        """
+        Classify whether the code a finding cites is touched by the commit diff.
+
+        Returns 'in-diff' if any cited code line is a changed (+/-) line or the
+        'outside-diff' if code lines are cited but none of them is touched by
+        the diff, and 'unknown' if no code lines are cited.  This is only a hint for the verification prompts: an
+        incomplete backport legitimately points at untouched code.
+        """
+        code_lines = self._evidence_code_lines(finding.get('evidence', ''))
+        if not code_lines:
+            return 'unknown'
+
+        changed = set()
+        for line in commit.diff.split('\n'):
+            if line[:1] in ('+', '-') and not line.startswith(('+++', '---')):
+                norm = ' '.join(line[1:].split())
+                if norm:
+                    changed.add(norm)
+
+        for code_line in code_lines:
+            norm = ' '.join(code_line.split())
+            if norm.startswith(('+', '-')):
+                norm = norm[1:].strip()
+            if len(norm) > 5 and (norm in changed or any(norm in c for c in changed)):
+                return 'in-diff'
+
+        return 'outside-diff'
 
     def _verify_evidence_physical_existence(self, finding: Dict, context: Dict, commit: Commit) -> bool:
         """

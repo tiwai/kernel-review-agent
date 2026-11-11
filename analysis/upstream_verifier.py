@@ -79,6 +79,70 @@ class UpstreamVerifier:
 
         return True
 
+    def resolve_upstream_commit(self, downstream_commit: Commit):
+        """
+        Resolve the upstream Linux commit for a downstream commit.
+
+        Follows either the direct upstream reference or the distro-commit tag
+        through the patch repository.
+
+        Returns:
+            (distro_commit, upstream_commit); either may be None.
+        """
+        distro_commit = None
+        upstream_sha = None
+
+        if downstream_commit.upstream_commit:
+            upstream_sha = downstream_commit.upstream_commit
+            if self.verbose:
+                print(f"[upstream] Using direct upstream reference: {upstream_sha[:12]}")
+        elif downstream_commit.distro_commit:
+            if not self.kernel_source:
+                if self.verbose:
+                    print("[upstream] patch repository not configured, skipping")
+                return None, None
+
+            distro_commit = self.kernel_source.get_commit(downstream_commit.distro_commit)
+            if not distro_commit:
+                if self.verbose:
+                    print(f"[upstream] Warning: Could not fetch distro-commit {downstream_commit.distro_commit[:12]}")
+                return None, None
+
+            if self.debug:
+                print(f"Found distro commit: {distro_commit.subject}")
+                print(f"Upstream reference from patch repo: {distro_commit.upstream_commit}")
+
+            if not distro_commit.upstream_commit:
+                if self.verbose:
+                    print("[upstream] No upstream reference found in patch repo commit")
+                return distro_commit, None
+
+            upstream_sha = distro_commit.upstream_commit
+
+        if not upstream_sha:
+            return distro_commit, None
+
+        upstream_commit = None
+        if self.upstream and self.upstream.is_available():
+            upstream_commit = self.upstream.get_commit(upstream_sha)
+            if self.debug and upstream_commit:
+                print(f"Fetched upstream commit from upstream repo")
+
+        # Fallback: try current repository (might be Linux kernel)
+        if not upstream_commit:
+            try:
+                local_git = CommitExtractor(verbose=self.verbose)
+                upstream_commit = local_git.get_commit(upstream_sha)
+                if self.debug and upstream_commit:
+                    print(f"Fetched upstream commit from current repo")
+            except Exception:
+                pass
+
+        if not upstream_commit and self.verbose:
+            print(f"[upstream] Warning: Could not fetch upstream commit {upstream_sha[:12]}")
+
+        return distro_commit, upstream_commit
+
     def verify_against_upstream(
         self,
         downstream_commit: Commit,
@@ -120,70 +184,11 @@ class UpstreamVerifier:
             'findings_only_downstream': []
         }
 
-        # Determine upstream commit SHA
-        upstream_sha = None
-
-        # Path 1: Direct upstream reference in downstream commit
-        if downstream_commit.upstream_commit:
-            upstream_sha = downstream_commit.upstream_commit
-            if self.verbose:
-                print(f"[upstream] Using direct upstream reference: {upstream_sha[:12]}")
-
-        # Path 2: distro-commit tag → patch repo → upstream reference
-        elif downstream_commit.distro_commit:
-            if not self.kernel_source:
-                if self.verbose:
-                    print("[upstream] patch repository not configured, skipping")
-                return result
-
-            distro_commit = self.kernel_source.get_commit(downstream_commit.distro_commit)
-            if not distro_commit:
-                if self.verbose:
-                    print(f"[upstream] Warning: Could not fetch distro-commit {downstream_commit.distro_commit[:12]}")
-                return result
-
-            result['distro_commit'] = distro_commit
-
-            if self.debug:
-                print(f"Found distro commit: {distro_commit.subject}")
-                print(f"Upstream reference from patch repo: {distro_commit.upstream_commit}")
-
-            if not distro_commit.upstream_commit:
-                if self.verbose:
-                    print("[upstream] No upstream reference found in patch repo commit")
-                # All findings are downstream-only
-                result['findings_only_downstream'] = findings
-                return result
-
-            upstream_sha = distro_commit.upstream_commit
-
-        # No upstream SHA available
-        if not upstream_sha:
-            result['findings_only_downstream'] = findings
-            return result
-
-        # Fetch upstream commit
-        upstream_commit = None
-
-        if self.upstream and self.upstream.is_available():
-            upstream_commit = self.upstream.get_commit(upstream_sha)
-            if self.debug and upstream_commit:
-                print(f"Fetched upstream commit from upstream repo")
-
-        # Fallback: try current repository (might be Linux kernel)
-        if not upstream_commit:
-            try:
-                local_git = CommitExtractor(verbose=self.verbose)
-                upstream_commit = local_git.get_commit(upstream_sha)
-                if self.debug and upstream_commit:
-                    print(f"Fetched upstream commit from current repo")
-            except Exception:
-                pass
+        distro_commit, upstream_commit = self.resolve_upstream_commit(downstream_commit)
+        result['distro_commit'] = distro_commit
 
         if not upstream_commit:
-            if self.verbose:
-                print(f"[upstream] Warning: Could not fetch upstream commit {upstream_sha[:12]}")
-            # Treat all findings as downstream-only
+            # No upstream commit available: all findings are downstream-only
             result['findings_only_downstream'] = findings
             return result
 
@@ -258,7 +263,16 @@ class UpstreamVerifier:
                               ['the', 'this', 'shows', 'standard', 'pattern', 'caller', 'diff']):
                         evidence_code_lines.append(stripped)
 
-            # Check if ALL evidence lines appear in upstream diff
+            # Only evidence lines taken from the downstream diff can be compared with
+            # the upstream diff.  Lines quoting untouched surrounding code appear in
+            # neither diff and say nothing about upstream.
+            normalized_downstream = ' '.join(downstream_commit.diff.split())
+            evidence_code_lines = [
+                l for l in evidence_code_lines
+                if ' '.join(l.split()) in normalized_downstream
+            ]
+
+            # Check if ALL remaining evidence lines appear in upstream diff
             if evidence_code_lines:
                 normalized_upstream = ' '.join(upstream_commit.diff.split())
                 matched_lines = []

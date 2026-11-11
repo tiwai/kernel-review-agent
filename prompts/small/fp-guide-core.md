@@ -24,3 +24,9 @@ Before reporting ANY regression, verify:
 3. **Did I check the full context?** (callers 2-3 levels up)
 4. **Is this actually wrong?** (check intent/documentation)
 5. **Did I check for future fixes in the same patch series?**
+
+## Pre-existing Issues
+Only regressions introduced by the commit under review matter. If the same flaw
+exists identically in the parent version and the commit does not change its
+behavior, it is NOT a finding. Exception: a part of the upstream fix that a
+backport omitted.
