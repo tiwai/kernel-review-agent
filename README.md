@@ -918,7 +918,7 @@ All options are optional. See `config.json.example` for a complete template.
 - `CATEGORIZE_MAX_TOKENS`: Categorization tokens (default: `8000`)
 - `ANALYZE_MAX_TOKENS`: Analysis tokens (default: `16000`)
 - `VERIFY_MAX_TOKENS`: Verification tokens (default: `16000`)
-- `VERIFY_REASONING_EFFORT`: Reasoning effort (`low`/`medium`/`high`) for the verification phase only (default: `null`, unchanged)
+- `VERIFY_REASONING_EFFORT`: Reasoning effort (`low`/`medium`/`high`/`xhigh`) for the verification phase only (default: `null`, unchanged)
 - `VERIFY_CHAT_TEMPLATE_KWARGS`: `chat_template_kwargs` object sent only in the verification phase, e.g. `{"enable_thinking": false}` (default: `null`)
 
 **Timeouts:**

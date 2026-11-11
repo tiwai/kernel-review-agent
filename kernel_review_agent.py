@@ -668,14 +668,14 @@ Examples:
 
     parser.add_argument(
         "--reasoning-effort",
-        choices=["low", "medium", "high"],
+        choices=["low", "medium", "high", "xhigh"],
         default=None,
-        help="Reasoning effort for models that support it, e.g. gpt-oss (low/medium/high)"
+        help="Reasoning effort for models that support it, e.g. gpt-oss (low/medium/high/xhigh)"
     )
 
     parser.add_argument(
         "--verify-reasoning-effort",
-        choices=["low", "medium", "high"],
+        choices=["low", "medium", "high", "xhigh"],
         default=config.VERIFY_REASONING_EFFORT,
         help="Reasoning effort used only in the verification phase "
              "(default: same as --reasoning-effort)"
