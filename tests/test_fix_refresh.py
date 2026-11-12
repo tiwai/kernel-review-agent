@@ -124,6 +124,16 @@ class RefreshTest(unittest.TestCase):
         self.assertEqual(f['fix-status'], 'fixed-upstream')
         self.assertEqual(f['future-fix'], f'{fix[:12]} (upstream)')
 
+    def test_review_without_pre_verification_uses_git(self):
+        os.unlink(os.path.join(self.dir, 'review-pre-verification.json'))
+        fix = commit_file(self.down, 'a.c', 'fixed\n', f'fix\n\nFixes: {self.bug[:12]}')
+        self.set_origin(self.down, 'SL-1')
+        from git_integration import Commit
+        get = lambda sha: Commit(sha=sha, author='a', date='', subject='s', message='s',
+                                 diff='+bug', files=['a.c'])
+        res = self.refresh(FakeLLM(f'FIXES: {{"1": ["{fix[:12]}"]}}'), get_commit=get)
+        self.assertEqual(res['newly_fixed'], 1)
+
     def test_patch_inline_text(self):
         text = '[Finding 1 — type: x, fix-status: fixed, future-fix: a (b), c]\nmsg\n'
         out = patch_inline_text(text, [{'type': 'x', 'fix-status': 'fixed-upstream',

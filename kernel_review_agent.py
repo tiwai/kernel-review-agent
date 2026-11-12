@@ -147,22 +147,27 @@ def run_refresh_fix_status(args, git, llm, upstream_repo_extractor):
                       if os.path.isdir(d))
 
     counts = {'updated': 0, 'unchanged': 0, 'skipped': 0, 'error': 0}
+    skip_reasons = {}
     newly_fixed = 0
     for i, commit_dir in enumerate(dirs, 1):
         sha = os.path.basename(commit_dir)
         try:
-            res = refresh_review_dir(commit_dir, checker, llm,
-                                     force=args.force, verbose=args.verbose)
+            res = refresh_review_dir(commit_dir, checker, llm, force=args.force,
+                                     verbose=args.verbose, get_commit=git.get_commit)
         except Exception as e:
             res = {'state': 'error', 'reason': str(e), 'newly_fixed': 0}
             if args.debug:
                 import traceback
                 traceback.print_exc()
         counts[res['state']] += 1
+        if res['state'] == 'skipped':
+            skip_reasons[res['reason']] = skip_reasons.get(res['reason'], 0) + 1
         newly_fixed += res['newly_fixed']
         if res['state'] in ('updated', 'error') or args.verbose:
             print(f"[{i}/{len(dirs)}] {sha[:12]}: {res['state']} ({res['reason']})")
 
+    for reason, n in sorted(skip_reasons.items(), key=lambda kv: -kv[1]):
+        print(f"  skipped {n}: {reason}")
     print(f"Fix-status refresh: {len(dirs)} review(s): {counts['updated']} updated "
           f"({newly_fixed} newly fixed), {counts['unchanged']} unchanged, "
           f"{counts['skipped']} skipped, {counts['error']} failed")

@@ -90,8 +90,12 @@ def _merge(finding: Dict, old: Dict) -> None:
 
 
 def refresh_review_dir(commit_dir: str, checker: FixChecker, llm, force: bool = False,
-                       verbose: bool = False) -> Dict:
+                       verbose: bool = False, get_commit=None) -> Dict:
     """Refresh one review directory.
+
+    get_commit(sha) supplies the commit (diff, files, subject) for reviews that have
+    no review-pre-verification.json (it is only written when findings existed
+    before verification).
 
     Returns {'state': 'skipped'|'unchanged'|'updated'|'error', 'reason': str,
              'newly_fixed': int}.
@@ -103,10 +107,10 @@ def refresh_review_dir(commit_dir: str, checker: FixChecker, llm, force: bool = 
     state_path = os.path.join(commit_dir, STATE_FILE)
 
     inline_path = inline_json if os.path.exists(inline_json) else inline_txt
-    pre = _load_json(pre_path)
-    if not os.path.exists(inline_path) or pre is None:
-        result['reason'] = 'no review-inline.* or review-pre-verification.json'
+    if not os.path.exists(inline_path):
+        result['reason'] = 'no review-inline.json/txt'
         return result
+    pre = _load_json(pre_path) or {}
 
     inline = load_inline_review(inline_path, pre)
     findings = inline.get('findings') or []
@@ -133,9 +137,17 @@ def refresh_review_dir(commit_dir: str, checker: FixChecker, llm, force: bool = 
 
     sha = pre.get('sha') or inline.get('commit') or os.path.basename(commit_dir)
     upstream_sha = inline.get('upstream-commit') or pre.get('upstream_commit')
-    commit = SimpleNamespace(
-        sha=sha, subject=pre.get('subject', ''), diff=pre.get('diff', ''),
-        files=pre.get('files', []), upstream_commit=upstream_sha, distro_commit=None)
+    if 'diff' in pre:
+        commit = SimpleNamespace(
+            sha=sha, subject=pre.get('subject', ''), diff=pre['diff'],
+            files=pre.get('files', []), upstream_commit=upstream_sha, distro_commit=None)
+    else:
+        try:
+            commit = get_commit(sha)
+        except Exception as e:
+            result['reason'] = f"no review-pre-verification.json and commit not in this repository ({e})"
+            return result
+        commit.upstream_commit = upstream_sha or commit.upstream_commit
 
     since_down = None if force else state.get('downstream-head')
     since_up = None if force else state.get('upstream-head')
