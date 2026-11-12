@@ -119,8 +119,37 @@ class FixChecker:
 
     # ----------------------------------------------------------- candidates
 
-    def _downstream_candidates(self, commit, upstream_sha: Optional[str]) -> List[Dict]:
-        """Later commits on origin/<target> that mention the commit or touch its files."""
+    def _range_start(self, repo: str, base: str, since: Optional[str], ref: str) -> str:
+        """Start of the candidate range: since if it is an ancestor of ref, else base."""
+        if since and self._is_ancestor(repo, since, ref):
+            return since
+        return base
+
+    def _resolve_upstream_ref(self) -> Optional[str]:
+        """The upstream ref to scan (upstream_ref or a fallback), None if unavailable."""
+        if not self.upstream_dir:
+            return None
+        for ref in (self.upstream_ref, 'master', 'HEAD'):
+            if self._ref_exists(self.upstream_dir, ref):
+                return ref
+        return None
+
+    def heads(self) -> Dict[str, Optional[str]]:
+        """Current tips of the scanned downstream branch and upstream ref (None if unknown)."""
+        down = up = None
+        if self.branch and self._ref_exists(self.downstream_dir, self.branch):
+            down = (self._git(self.downstream_dir, ['rev-parse', self.branch]) or '').strip() or None
+        ref = self._resolve_upstream_ref()
+        if ref:
+            up = (self._git(self.upstream_dir, ['rev-parse', ref]) or '').strip() or None
+        return {'downstream': down, 'upstream': up}
+
+    def _downstream_candidates(self, commit, upstream_sha: Optional[str],
+                               since: Optional[str] = None) -> List[Dict]:
+        """Later commits on origin/<target> that mention the commit or touch its files.
+
+        since limits the range to commits after it (when it is on the branch).
+        """
         if not self.branch or not self._ref_exists(self.downstream_dir, self.branch):
             return []
         if not self._is_ancestor(self.downstream_dir, commit.sha, self.branch):
@@ -128,7 +157,7 @@ class FixChecker:
                 print(f"      [FIXCHECK] {commit.sha[:12]} is not in {self.branch}; "
                       "skipping the downstream check")
             return []
-        rng = f"{commit.sha}..{self.branch}"
+        rng = f"{self._range_start(self.downstream_dir, commit.sha, since, self.branch)}..{self.branch}"
         files = list(commit.files or [])
         ids = [commit.sha[:12]]
         if upstream_sha:
@@ -144,21 +173,17 @@ class FixChecker:
             for sha, subject in list(found.items())[:MAX_CANDIDATES]
         ]
 
-    def _upstream_candidates(self, commit, upstream_sha: Optional[str]) -> List[Dict]:
+    def _upstream_candidates(self, commit, upstream_sha: Optional[str],
+                             since: Optional[str] = None) -> List[Dict]:
         """Later upstream commits with a Fixes: tag for the upstream commit, or touching its files."""
         if not upstream_sha or not self.upstream_dir:
             return []
-        ref = self.upstream_ref
-        if not self._ref_exists(self.upstream_dir, ref):
-            for alt in ('master', 'HEAD'):
-                if self._ref_exists(self.upstream_dir, alt):
-                    ref = alt
-                    break
-            else:
-                return []
+        ref = self._resolve_upstream_ref()
+        if not ref:
+            return []
         if not self._is_ancestor(self.upstream_dir, upstream_sha, ref):
             return []
-        rng = f"{upstream_sha}..{ref}"
+        rng = f"{self._range_start(self.upstream_dir, upstream_sha, since, ref)}..{ref}"
         files = list(commit.files or [])
         found: Dict[str, str] = {}
         for sha, subject in self._log(self.upstream_dir, rng, f"Fixes: {upstream_sha[:12]}", []):
@@ -191,24 +216,31 @@ class FixChecker:
     # ----------------------------------------------------------------- LLM
 
     def check(self, llm, commit, findings: List[Dict], upstream_sha: Optional[str],
-              max_iterations: Optional[int] = None) -> None:
-        """Annotate findings in place with fix-status and future-fix."""
+              max_iterations: Optional[int] = None,
+              since_downstream: Optional[str] = None,
+              since_upstream: Optional[str] = None) -> bool:
+        """Annotate findings in place with fix-status and future-fix.
+
+        since_downstream / since_upstream restrict the scan to commits after an
+        earlier scan's branch tips (see heads()); used when refreshing old reviews.
+        Returns False if the LLM step failed (findings are then left as they were).
+        """
         if not findings:
-            return
+            return True
         apply_default_fix_status(findings)
 
-        down = self._downstream_candidates(commit, upstream_sha)
-        up = self._upstream_candidates(commit, upstream_sha)
+        down = self._downstream_candidates(commit, upstream_sha, since_downstream)
+        up = self._upstream_candidates(commit, upstream_sha, since_upstream)
         if self.verbose:
             print(f"      [FIXCHECK] candidates: {len(down)} on {self.branch or 'n/a'}, "
                   f"{len(up)} upstream")
         if not down and not up:
-            return
+            return True
 
         cands = {c['sha']: c for c in down + up}
         verdict = self._ask_llm(llm, commit, findings, down, up, max_iterations)
         if verdict is None:
-            return
+            return False
 
         for idx, f in enumerate(findings, 1):
             shas = verdict.get(str(idx)) or []
@@ -233,6 +265,7 @@ class FixChecker:
             else:
                 continue
             f[FUTURE_FIX_KEY] = '; '.join(fixes_down + fixes_up)
+        return True
 
     def _ask_llm(self, llm, commit, findings, down, up, max_iterations) -> Optional[Dict]:
         system_prompt = (

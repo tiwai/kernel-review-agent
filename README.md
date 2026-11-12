@@ -416,6 +416,16 @@ After verification (hybrid mode), each remaining finding is checked against late
 
 `review-inline.json` and `review-metadata.json` also get `issues-fixed` and a one-line `future-fix`. Fix patches are not proposed for `fixed` findings. Without a target branch only upstream is checked. The JSON schemas are in `docs/schema/`.
 
+#### Refreshing old reviews
+
+```bash
+# e.g. from cron: update all reviews in the output directory
+git fetch origin && python kernel_review_agent.py --refresh-fix-status --target-branch SL-16.0 --upstream-repo ~/git/linus
+python kernel_review_agent.py --refresh-fix-status A..B --target-branch SL-16.0   # only these commits
+```
+
+`--refresh-fix-status` re-checks the still-open findings (`not-fixed`, and `fixed-upstream` in case of a backport) of existing reviews and updates `fix-status`/`future-fix` in place in `review-inline.json`, `review-inline.txt` and `review-metadata.json`; nothing else is changed. The branch tips seen are recorded in `review-fix-check.json` per review, so a run only looks at commits that landed since the previous one, and reviews whose branch tips did not move cost no LLM call. A failed LLM call keeps the old marker and is retried on the next run. `--force` rescans from the reviewed commit. Reviews need `review-pre-verification.json` next to them.
+
 ### Fix Patch Proposals
 
 ```bash

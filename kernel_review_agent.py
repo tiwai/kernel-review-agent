@@ -116,6 +116,59 @@ def make_fix_checker(args, upstream_repo_extractor):
     )
 
 
+def run_refresh_fix_status(args, git, llm, upstream_repo_extractor):
+    """--refresh-fix-status: update fix-status of open findings in existing reviews"""
+    import glob
+    from analysis.fix_refresh import refresh_review_dir
+
+    checker = make_fix_checker(args, upstream_repo_extractor)
+    if checker is None:
+        print("Error: --refresh-fix-status needs --target-branch (or $TARGET) or an "
+              "upstream repository, and cannot be combined with --no-fix-check",
+              file=sys.stderr)
+        return 1
+    if not hasattr(llm, 'analyze_with_tools'):
+        print("Error: --refresh-fix-status needs a tool-enabled OpenAI-compatible "
+              "provider (not --disable-tools)", file=sys.stderr)
+        return 1
+
+    if args.commit:
+        shas = []
+        for commit_arg in args.commit:
+            try:
+                shas.extend(git.expand_range(commit_arg))
+            except Exception as e:
+                print(f"Error: Invalid commit or range: {commit_arg}: {e}", file=sys.stderr)
+                return 1
+        dirs = [os.path.join(args.output_dir, sha[:2], sha) for sha in shas]
+        dirs = [d for d in dirs if os.path.isdir(d)]
+    else:
+        dirs = sorted(d for d in glob.glob(os.path.join(args.output_dir, '??', '*'))
+                      if os.path.isdir(d))
+
+    counts = {'updated': 0, 'unchanged': 0, 'skipped': 0, 'error': 0}
+    newly_fixed = 0
+    for i, commit_dir in enumerate(dirs, 1):
+        sha = os.path.basename(commit_dir)
+        try:
+            res = refresh_review_dir(commit_dir, checker, llm,
+                                     force=args.force, verbose=args.verbose)
+        except Exception as e:
+            res = {'state': 'error', 'reason': str(e), 'newly_fixed': 0}
+            if args.debug:
+                import traceback
+                traceback.print_exc()
+        counts[res['state']] += 1
+        newly_fixed += res['newly_fixed']
+        if res['state'] in ('updated', 'error') or args.verbose:
+            print(f"[{i}/{len(dirs)}] {sha[:12]}: {res['state']} ({res['reason']})")
+
+    print(f"Fix-status refresh: {len(dirs)} review(s): {counts['updated']} updated "
+          f"({newly_fixed} newly fixed), {counts['unchanged']} unchanged, "
+          f"{counts['skipped']} skipped, {counts['error']} failed")
+    return 1 if counts['error'] else 0
+
+
 def process_commit_worker(instance_id, work_queue, results_queue, args, host_reset_event, stop_event):
     """
     Worker process for parallel commit processing.
@@ -775,6 +828,17 @@ Examples:
     )
 
     parser.add_argument(
+        "--refresh-fix-status",
+        action="store_true",
+        help="Update the fix-status/future-fix of still-open findings in existing "
+             "reviews in --output-dir by checking the commits that landed on "
+             "--target-branch (and upstream) since the last refresh.  Covers the given "
+             "commits/ranges, or all reviews if none are given.  Reviews whose branch "
+             "tips did not move are skipped without an LLM call; use --force to "
+             "rescan from the reviewed commit.  Meant to be run regularly (cron)."
+    )
+
+    parser.add_argument(
         "--stop-after",
         choices=["categorize", "analyze", "verify"],
         help="Stop workflow after the specified stage (for dataset generation). "
@@ -815,7 +879,8 @@ Examples:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Force re-review even if output directory already exists for the commit"
+        help="Force re-review even if output directory already exists for the commit "
+             "(with --refresh-fix-status: rescan from the reviewed commit)"
     )
 
     parser.add_argument(
@@ -956,7 +1021,7 @@ Examples:
         return 0
 
     # Check if we have commits to process (unless in reverify mode)
-    if not args.commit and not args.reverify:
+    if not args.commit and not args.reverify and not args.refresh_fix_status:
         print("Error: No commits specified. Provide commit SHA(s), ranges, use --list FILE, or use --reverify PATH", file=sys.stderr)
         return 1
 
@@ -1447,6 +1512,9 @@ Examples:
             print("=" * 70)
 
         return 0 if successful > 0 else 1
+
+    if args.refresh_fix_status:
+        return run_refresh_fix_status(args, git, llm, upstream_repo_extractor)
 
     # Re-verify-update mode: re-verify and prune findings from existing review-inline.json files
     if args.reverify_update:
