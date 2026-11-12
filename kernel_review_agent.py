@@ -119,6 +119,7 @@ def make_fix_checker(args, upstream_repo_extractor):
 def run_refresh_fix_status(args, git, llm, upstream_repo_extractor):
     """--refresh-fix-status: update fix-status of open findings in existing reviews"""
     import glob
+    import re
     from analysis.fix_refresh import refresh_review_dir
 
     checker = make_fix_checker(args, upstream_repo_extractor)
@@ -143,8 +144,19 @@ def run_refresh_fix_status(args, git, llm, upstream_repo_extractor):
         dirs = [os.path.join(args.output_dir, sha[:2], sha) for sha in shas]
         dirs = [d for d in dirs if os.path.isdir(d)]
     else:
-        dirs = sorted(d for d in glob.glob(os.path.join(args.output_dir, '??', '*'))
-                      if os.path.isdir(d))
+        # <output-dir>/<sha[:2]>/<sha>/; the output dir may be the kernel tree itself,
+        # so only accept directories named like a commit that hold a review
+        dirs = sorted(
+            d for d in glob.glob(os.path.join(args.output_dir, '[0-9a-f][0-9a-f]', '*'))
+            if re.fullmatch(r'[0-9a-f]{40}', os.path.basename(d))
+            and os.path.basename(os.path.dirname(d)) == os.path.basename(d)[:2]
+            and (os.path.exists(os.path.join(d, 'review-inline.json'))
+                 or os.path.exists(os.path.join(d, 'review-inline.txt'))))
+
+    if not dirs:
+        print(f"No reviews found in {os.path.abspath(args.output_dir)} "
+              "(expected <output-dir>/<sha[:2]>/<sha>/review-inline.json; see --output-dir)")
+        return 0
 
     counts = {'updated': 0, 'unchanged': 0, 'skipped': 0, 'error': 0}
     skip_reasons = {}
