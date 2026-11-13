@@ -1374,6 +1374,27 @@ JSON array (empty [] if false positive):"""
 
         return 'outside-diff'
 
+    def _symbol_exists_in_tree(self, sym: str, commit: Commit) -> bool:
+        """Check whether sym occurs in the source tree at the commit's revision.
+
+        Returns True if git cannot answer (error other than "no match"), so that
+        an unavailable tree never causes a finding to be discarded.
+        """
+        rev = git_ref_for_commit(commit.sha)
+        cache = self.__dict__.setdefault('_symbol_tree_cache', {})
+        key = (self.git_dir, rev, sym)
+        if key not in cache:
+            try:
+                result = subprocess.run(
+                    ['git', 'grep', '-q', '-F', '-e', sym, rev],
+                    capture_output=True,
+                    cwd=self.git_dir
+                )
+                cache[key] = result.returncode != 1
+            except OSError:
+                cache[key] = True
+        return cache[key]
+
     def _verify_evidence_physical_existence(self, finding: Dict, context: Dict, commit: Commit) -> bool:
         """
         Hallucination Pre-Pass: Deterministically verify that cited code symbols
@@ -1382,8 +1403,8 @@ JSON array (empty [] if false positive):"""
         Two checks, both structural (no text understanding required):
 
         1. Code-symbol check: every underscore-containing identifier cited in the
-           finding's message or evidence must appear somewhere in the diff or code
-           context.  Underscore identifiers are unambiguously C symbols, not prose
+           finding's message or evidence must appear somewhere in the diff, the code
+           context, or the source tree at the commit's revision.  Underscore identifiers are unambiguously C symbols, not prose
            words, so any cited one that is absent is a hallucinated symbol.
 
         2. File-path check: any path-like token (word/word…/word.c|h) that refers
@@ -1418,10 +1439,15 @@ JSON array (empty [] if false positive):"""
         code_symbols = evidence_syms | message_syms
 
         for sym in code_symbols:
-            if sym not in full_text:
-                if self.verbose or self.debug:
-                    print(f"      [PRE-PASS] Hallucinated symbol '{sym}' not in context")
-                return False
+            if sym in full_text:
+                continue
+            # Not in the diff/context; a "should be X" finding may name a real
+            # symbol that the diff doesn't use, so look it up in the tree.
+            if self._symbol_exists_in_tree(sym, commit):
+                continue
+            if self.verbose or self.debug:
+                print(f"      [PRE-PASS] Hallucinated symbol '{sym}' not in context or tree")
+            return False
 
         # --- Check 2: file-path tokens not present in the diff ---
         # Matches patterns like  drivers/char/mmtimer.c  net/wireless/pmsr.c
