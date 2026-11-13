@@ -789,9 +789,24 @@ Be concise but show the trace."""
             "findings about pre-existing issues: compare with the parent version "
             "(get_function with version=\"before\") and drop the finding if the same "
             "flaw is already there and the commit doesn't change its behavior. "
-            "Exception: a part of the upstream fix that this backport omitted "
-            "(see the upstream diff, if given) is a genuine issue of the commit.\n\n"
-            "After your investigation, output a line in exactly this format:\n"
+            "Exceptions, which are genuine issues of the commit and must be kept: "
+            "(a) a part of the upstream fix that this backport omitted (see the "
+            "upstream diff, if given); (b) when the commit is itself a fix, the bug "
+            "it claims to fix (see the commit message) still being reachable after "
+            "the commit, e.g. because the fix is misplaced or ineffective in this "
+            "tree. In case (b), the flaw being 'already there in the parent' is "
+            "exactly what makes the commit a failure, not a reason to discard.\n\n"
+            "For a backport, an identical hunk is not enough: the same lines can be "
+            "misplaced in the downstream function. When a finding is about statement "
+            "order or placement, call get_function on the downstream function (and, "
+            "if needed, the upstream one) and quote the real order of the statements "
+            "before deciding. Never state facts about upstream from memory, and do "
+            "not cite a commit hash you have not seen in this conversation or "
+            "verified with a tool.\n\n"
+            "After your investigation, output one line per discarded finding, then "
+            "the verdict line, in exactly this format:\n"
+            "DISCARDED: <finding number> - <reason that quotes the relevant source "
+            "lines with line numbers>\n"
             "VALID_FINDINGS: [<comma-separated 1-based finding numbers>]\n"
             "Examples:\n"
             "  VALID_FINDINGS: [1, 3]   <- findings 1 and 3 are real; 2 is a false positive\n"
@@ -844,8 +859,11 @@ Be concise but show the trace."""
             f"Reported findings to re-verify:\n\n"
             + "\n\n".join(findings_lines)
             + "\n\nInvestigate each finding using git tools as needed, then output:\n"
+              "DISCARDED: <number> - <reason> (one line per discarded finding), then "
               "VALID_FINDINGS: [<numbers>]"
         )
+
+        self.skeptic_discards = []
 
         try:
             response = self.llm.analyze_with_tools(
@@ -866,6 +884,31 @@ Be concise but show the trace."""
                     for idx in valid_indices
                     if isinstance(idx, int) and 1 <= idx <= len(findings)
                 ]
+                reasons = {
+                    int(m.group(1)): m.group(2).strip()
+                    for m in re.finditer(r'^\s*DISCARDED:\s*(\d+)\s*[-:–]\s*(.+)$',
+                                         response, re.MULTILINE)
+                }
+                # A discard without a stated reason is unverifiable; keep the finding
+                valid = set(valid_indices)
+                survived = [
+                    f for i, f in enumerate(findings, 1)
+                    if i in valid or i not in reasons
+                ]
+                for i, f in enumerate(findings, 1):
+                    if i in valid:
+                        continue
+                    if i not in reasons:
+                        if self.verbose or self.debug:
+                            print(f"      [PHASE 3] Finding {i} dropped without a "
+                                  f"reason; keeping it")
+                        continue
+                    reason = reasons[i]
+                    self.skeptic_discards.append(
+                        {**f, 'pruned_reason': 'phase3-skeptic-pass',
+                         'skeptic_reason': reason})
+                    if self.verbose or self.debug:
+                        print(f"      [PHASE 3] Discarded finding {i}: {reason}")
                 return survived
 
             # No verdict marker found — be conservative and keep everything

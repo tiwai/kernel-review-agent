@@ -378,7 +378,7 @@ class ReviewWorkflow:
         result = self._post_verify_hook(commit, result)
         if len(result.findings) < len(pre_hook_findings):
             surviving_cats = {f.get('category') for f in result.findings}
-            extra_pruned = [
+            extra_pruned = getattr(self, 'skeptic_discards', None) or [
                 {**f, 'pruned_reason': 'phase3-skeptic-pass'}
                 for f in pre_hook_findings
                 if f.get('category') not in surviving_cats
