@@ -291,6 +291,14 @@ class HybridReviewWorkflow(ReviewWorkflow):
         other_findings = [f for f in findings if id(f) not in specialized_verified_ids]
         verified.extend(other_findings)
 
+        if self.verbose and other_findings:
+            if not specialized_verified_ids:
+                print(f"  No specialized verifier applies; "
+                      f"{len(other_findings)} finding(s) passed through unchanged")
+            else:
+                print(f"  {len(other_findings)} finding(s) passed through "
+                      f"without specialized verification")
+
         return verified
 
     def _verify_finding_generic(self, commit: Commit, finding: Dict) -> bool:
