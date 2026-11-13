@@ -17,7 +17,8 @@
 
   "_comment_verify_thinking": "Thinking level override for the verification phase only (null = server default)",
   "VERIFY_REASONING_EFFORT": null,
-  "VERIFY_CHAT_TEMPLATE_KWARGS": false,
+  "_comment_chat_template_kwargs": "Also send the effort levels as chat_template_kwargs (openai provider only)",
+  "CHAT_TEMPLATE_KWARGS": false,
 
   "_comment_fix_check": "Check whether findings are already fixed on origin/<TARGET_BRANCH> (default: $TARGET) or upstream",
   "FIX_CHECK": true,

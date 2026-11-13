@@ -513,6 +513,10 @@ When `--timeout 0` is specified, timeout checks are completely disabled, allowin
 python kernel_review_agent.py HEAD --reasoning-effort high
 python kernel_review_agent.py HEAD --reasoning-effort medium
 python kernel_review_agent.py HEAD --reasoning-effort low
+
+# Models whose chat template takes the level via chat_template_kwargs (llama.cpp, openai provider only):
+# also send the level there; "none" sends enable_thinking=false (e.g. qwen3)
+python kernel_review_agent.py HEAD --reasoning-effort none --chat-template-kwargs
 ```
 
 Some models (e.g. gpt-oss) accept a `reasoning_effort` parameter controlling how much thinking the model applies before responding. Higher effort produces more thorough analysis at the cost of slower responses. Models that don't support this parameter silently ignore it.
@@ -523,12 +527,11 @@ The thinking level can be changed for the verification phase only (deep-dive ver
 # Lower effort when verifying
 python kernel_review_agent.py HEAD --verify-reasoning-effort low
 
-# Models whose chat template takes the level via chat_template_kwargs (llama.cpp, openai provider only):
-# also send the level there; "none" sends enable_thinking=false (e.g. qwen3)
-python kernel_review_agent.py HEAD --verify-reasoning-effort none --verify-chat-template-kwargs
+# --chat-template-kwargs applies to the verification level as well
+python kernel_review_agent.py HEAD --verify-reasoning-effort none --chat-template-kwargs
 ```
 
-The same settings can be given in the config file as `VERIFY_REASONING_EFFORT` and `VERIFY_CHAT_TEMPLATE_KWARGS` (a boolean); command-line options take precedence. The level `none` only works together with `--verify-chat-template-kwargs`; otherwise it is sent as a plain `reasoning_effort` value.
+The same settings can be given in the config file as `VERIFY_REASONING_EFFORT` and `CHAT_TEMPLATE_KWARGS` (a boolean); command-line options take precedence. The level `none` only works together with `--chat-template-kwargs`; otherwise it is sent as a plain `reasoning_effort` value.
 
 ```bash
 # Re-run review if no issues found and it completed within 60 seconds
@@ -946,7 +949,7 @@ All options are optional. See `config.json.example` for a complete template.
 - `ANALYZE_MAX_TOKENS`: Analysis tokens (default: `16000`)
 - `VERIFY_MAX_TOKENS`: Verification tokens (default: `16000`)
 - `VERIFY_REASONING_EFFORT`: Reasoning effort (`none`/`low`/`medium`/`high`/`xhigh`) for the verification phase only (default: `null`, unchanged)
-- `VERIFY_CHAT_TEMPLATE_KWARGS`: Also send the verification effort as `chat_template_kwargs` (default: `false`)
+- `CHAT_TEMPLATE_KWARGS`: Also send the effort levels (`--reasoning-effort` and the verification one) as `chat_template_kwargs` (default: `false`)
 
 **Timeouts:**
 - `LLM_TIMEOUT`: Request timeout in seconds (default: `300`)

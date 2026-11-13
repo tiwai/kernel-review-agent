@@ -104,7 +104,7 @@ def load_configuration():
 
         # Thinking level override for the verification phase (None = server default)
         'VERIFY_REASONING_EFFORT': None,         # 'none', 'low', 'medium', 'high' or 'xhigh'
-        'VERIFY_CHAT_TEMPLATE_KWARGS': False,    # also send the level as chat_template_kwargs
+        'CHAT_TEMPLATE_KWARGS': False,           # also send the effort levels as chat_template_kwargs
 
         # Later-fix check: is a finding already fixed on origin/<TARGET_BRANCH> or upstream?
         'FIX_CHECK': True,
@@ -205,7 +205,7 @@ CATEGORIZE_MAX_TOKENS = _config['CATEGORIZE_MAX_TOKENS']
 ANALYZE_MAX_TOKENS = _config['ANALYZE_MAX_TOKENS']
 VERIFY_MAX_TOKENS = _config['VERIFY_MAX_TOKENS']
 VERIFY_REASONING_EFFORT = _config['VERIFY_REASONING_EFFORT']
-VERIFY_CHAT_TEMPLATE_KWARGS = _config['VERIFY_CHAT_TEMPLATE_KWARGS']
+CHAT_TEMPLATE_KWARGS = _config['CHAT_TEMPLATE_KWARGS']
 FIX_CHECK = _config['FIX_CHECK']
 TARGET_BRANCH = _config['TARGET_BRANCH']
 TRUNCATION_WARNING_THRESHOLD = _config['TRUNCATION_WARNING_THRESHOLD']

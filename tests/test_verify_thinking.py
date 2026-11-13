@@ -34,13 +34,15 @@ class TestThinkingScope(unittest.TestCase):
         client = make_client(
             reasoning_effort="high",
             verify_reasoning_effort="low",
-            verify_chat_template_kwargs=True)
-        self.assertEqual(payload(client), {"reasoning_effort": "high"})
+            chat_template_kwargs=True)
+        high = {"reasoning_effort": "high",
+                "extra_body": {"chat_template_kwargs": {"reasoning_effort": "high"}}}
+        self.assertEqual(payload(client), high)
         with client.thinking_scope(True):
             self.assertEqual(payload(client), {
                 "reasoning_effort": "low",
                 "extra_body": {"chat_template_kwargs": {"reasoning_effort": "low"}}})
-        self.assertEqual(payload(client), {"reasoning_effort": "high"})
+        self.assertEqual(payload(client), high)
 
     def test_effort_only_without_toggle(self):
         client = make_client(verify_reasoning_effort="xhigh")
@@ -49,14 +51,25 @@ class TestThinkingScope(unittest.TestCase):
 
     def test_none_with_toggle_disables_thinking(self):
         client = make_client(reasoning_effort="high", verify_reasoning_effort="none",
-                             verify_chat_template_kwargs=True)
+                             chat_template_kwargs=True)
         with client.thinking_scope(True):
             self.assertEqual(payload(client), {
                 "reasoning_effort": "high",
                 "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}})
 
+    def test_main_phase_chat_template_kwargs(self):
+        client = make_client(reasoning_effort="low", chat_template_kwargs=True)
+        self.assertEqual(payload(client), {
+            "reasoning_effort": "low",
+            "extra_body": {"chat_template_kwargs": {"reasoning_effort": "low"}}})
+
+    def test_main_phase_none_disables_thinking(self):
+        client = make_client(reasoning_effort="none", chat_template_kwargs=True)
+        self.assertEqual(payload(client), {
+            "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}})
+
     def test_toggle_without_effort_is_noop(self):
-        client = make_client(verify_chat_template_kwargs=True)
+        client = make_client(chat_template_kwargs=True)
         with client.thinking_scope(True):
             self.assertEqual(payload(client), {})
 
@@ -73,7 +86,7 @@ class TestThinkingScope(unittest.TestCase):
         self.assertEqual(payload(client), {})
 
     def test_tool_client_create(self):
-        client = make_client(ToolEnabledClient, verify_reasoning_effort="none", verify_chat_template_kwargs=True)
+        client = make_client(ToolEnabledClient, verify_reasoning_effort="none", chat_template_kwargs=True)
         client.client.chat.completions.create.return_value = "resp"
         with client.thinking_scope(True):
             client._create([], 10, None)

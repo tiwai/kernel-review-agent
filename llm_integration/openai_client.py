@@ -26,7 +26,7 @@ class OpenAIClient(LLMClient):
         dump_dir: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
         verify_reasoning_effort: Optional[str] = None,
-        verify_chat_template_kwargs: bool = False,
+        chat_template_kwargs: bool = False,
         **kwargs
     ):
         """
@@ -43,18 +43,22 @@ class OpenAIClient(LLMClient):
             dump_dir: (Deprecated) Legacy dump directory
             reasoning_effort: Reasoning effort level for models that support it
             verify_reasoning_effort: Reasoning effort override for the verification phase
-            verify_chat_template_kwargs: Also send the verification effort as
-                chat_template_kwargs, for models whose chat template takes the
-                level from there ('none' becomes enable_thinking=false)
+            chat_template_kwargs: Also send the effort levels as chat_template_kwargs,
+                for models whose chat template takes the level from there
+                ('none' becomes enable_thinking=false)
         """
         super().__init__(model, verbose, debug, dump_prompts, dump_dir)
 
         self.base_url = make_base_url(host, port)
         self.api_key = api_key
         self.reasoning_effort = reasoning_effort
+        base_overrides = (self._thinking_overrides(reasoning_effort, chat_template_kwargs)
+                          if reasoning_effort else {})
+        self._active_overrides = base_overrides
         if verify_reasoning_effort:
-            self.verify_overrides = self._verify_overrides(
-                verify_reasoning_effort, verify_chat_template_kwargs)
+            self.verify_overrides = {
+                **base_overrides,
+                **self._thinking_overrides(verify_reasoning_effort, chat_template_kwargs)}
 
         try:
             # For HTTP connections (local servers), disable SSL verification
@@ -127,8 +131,8 @@ class OpenAIClient(LLMClient):
         return response_text
 
     @staticmethod
-    def _verify_overrides(effort: str, chat_template_kwargs: bool) -> Dict[str, Any]:
-        """Request overrides for the verification phase from a reasoning effort level."""
+    def _thinking_overrides(effort: str, chat_template_kwargs: bool) -> Dict[str, Any]:
+        """Request parameters for a reasoning effort level."""
         if not chat_template_kwargs:
             return {'reasoning_effort': effort}
         if effort == 'none':
@@ -139,7 +143,7 @@ class OpenAIClient(LLMClient):
     @property
     def effective_reasoning_effort(self) -> Optional[str]:
         """Reasoning effort for the next request, honouring the active override."""
-        return self._active_overrides.get('reasoning_effort', self.reasoning_effort)
+        return self._active_overrides.get('reasoning_effort')
 
     def _apply_thinking(self, api_kwargs: Dict[str, Any]) -> None:
         """Add the thinking-level parameters to a chat completion request."""

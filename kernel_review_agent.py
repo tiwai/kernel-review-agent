@@ -90,13 +90,13 @@ from analysis.fix_checker import FixChecker
 from output import ReportFormatter, JSONReportFormatter, MetadataGenerator
 
 
-def verify_thinking_kwargs(args) -> dict:
-    """Client kwargs for the verification-phase thinking overrides"""
+def thinking_kwargs(args) -> dict:
+    """Client kwargs for the verification-phase thinking override and chat_template_kwargs"""
     kwargs = {}
     if args.verify_reasoning_effort:
         kwargs['verify_reasoning_effort'] = args.verify_reasoning_effort
-    if args.verify_chat_template_kwargs:
-        kwargs['verify_chat_template_kwargs'] = args.verify_chat_template_kwargs
+    if args.chat_template_kwargs:
+        kwargs['chat_template_kwargs'] = args.chat_template_kwargs
     return kwargs
 
 
@@ -227,7 +227,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
             })
             if args.reasoning_effort:
                 provider_kwargs['reasoning_effort'] = args.reasoning_effort
-            provider_kwargs.update(verify_thinking_kwargs(args))
+            provider_kwargs.update(thinking_kwargs(args))
         elif provider == 'ollama':
             provider_kwargs.update({
                 'host': args.host,
@@ -235,7 +235,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
             })
             if args.reasoning_effort:
                 provider_kwargs['reasoning_effort'] = args.reasoning_effort
-            provider_kwargs.update(verify_thinking_kwargs(args))
+            provider_kwargs.update(thinking_kwargs(args))
         elif provider == 'anthropic':
             if args.anthropic_api_key:
                 provider_kwargs['api_key'] = args.anthropic_api_key
@@ -349,7 +349,7 @@ def process_commit_worker(instance_id, work_queue, results_queue, args, host_res
                 debug=args.debug,
                 dump_prompts=args.save_prompts,
                 reasoning_effort=args.reasoning_effort or None,
-                **verify_thinking_kwargs(args)
+                **thinking_kwargs(args)
             )
 
             if enable_reset:
@@ -745,9 +745,10 @@ Examples:
 
     parser.add_argument(
         "--reasoning-effort",
-        choices=["low", "medium", "high", "xhigh"],
+        choices=["none", "low", "medium", "high", "xhigh"],
         default=None,
-        help="Reasoning effort for models that support it, e.g. gpt-oss (low/medium/high/xhigh)"
+        help="Reasoning effort for models that support it, e.g. gpt-oss (none/low/medium/high/xhigh); "
+             "'none' needs --chat-template-kwargs"
     )
 
     parser.add_argument(
@@ -755,15 +756,16 @@ Examples:
         choices=["none", "low", "medium", "high", "xhigh"],
         default=config.VERIFY_REASONING_EFFORT,
         help="Reasoning effort used only in the verification phase "
-             "(default: same as --reasoning-effort); 'none' needs --verify-chat-template-kwargs"
+             "(default: same as --reasoning-effort); 'none' needs --chat-template-kwargs"
     )
 
     parser.add_argument(
-        "--verify-chat-template-kwargs",
+        "--chat-template-kwargs",
         action=argparse.BooleanOptionalAction,
-        default=config.VERIFY_CHAT_TEMPLATE_KWARGS,
-        help="Also pass --verify-reasoning-effort as chat_template_kwargs, for models whose "
-             "chat template takes the level from there; 'none' sends enable_thinking=false "
+        default=config.CHAT_TEMPLATE_KWARGS,
+        help="Also pass --reasoning-effort and --verify-reasoning-effort as chat_template_kwargs, "
+             "for models whose chat template takes the level from there; 'none' sends "
+             "enable_thinking=false "
              "(openai provider only, default: off)"
     )
 
@@ -1142,7 +1144,7 @@ Examples:
             })
             if args.reasoning_effort:
                 provider_kwargs['reasoning_effort'] = args.reasoning_effort
-            provider_kwargs.update(verify_thinking_kwargs(args))
+            provider_kwargs.update(thinking_kwargs(args))
         elif provider == 'ollama':
             provider_kwargs.update({
                 'host': args.host,
@@ -1150,7 +1152,7 @@ Examples:
             })
             if args.reasoning_effort:
                 provider_kwargs['reasoning_effort'] = args.reasoning_effort
-            provider_kwargs.update(verify_thinking_kwargs(args))
+            provider_kwargs.update(thinking_kwargs(args))
         elif provider == 'anthropic':
             if args.anthropic_api_key:
                 provider_kwargs['api_key'] = args.anthropic_api_key
@@ -1337,7 +1339,7 @@ Examples:
                 debug=args.debug,
                 dump_prompts=args.save_prompts,
                 reasoning_effort=args.reasoning_effort or None,
-                **verify_thinking_kwargs(args)
+                **thinking_kwargs(args)
             )
 
             # Wrap ToolEnabledClient with resilient client if host reset enabled
